@@ -168,8 +168,10 @@ func Run() {
 	}
 
 	startHotkeyListener(func() {
-		w.Show()
-		w.RequestFocus()
+		fyne.Do(func() {
+			w.Show()
+			w.RequestFocus()
+		})
 	}, cfg)
 
 	w.ShowAndRun()

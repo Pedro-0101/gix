@@ -131,6 +131,18 @@ func Run() {
 	entry.ExtendBaseWidget(entry)
 	entry.PlaceHolder = getTr("placeholder")
 
+	closeDetector := &doublePressDetector{
+		fn: func() {
+			w.Hide()
+		},
+		interval: time.Duration(cfg.CloseIntervalMs) * time.Millisecond,
+	}
+	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
+		if k.Name == closeKey {
+			closeDetector.press()
+		}
+	})
+
 	settingsBtn = widget.NewButton(getTr("settings"), func() {
 		showSettingsWindow(a, w)
 	})

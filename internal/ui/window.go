@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"runtime"
 	"syscall"
 	"time"
 	"unsafe"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -71,22 +73,42 @@ func Run() {
 	w.Resize(fyne.NewSize(400, 300))
 
 	entry := &escEntry{onDoubleEsc: func() {
-		w.Close()
-		a.Quit()
+		w.Hide()
 	}}
 	entry.ExtendBaseWidget(entry)
 	entry.PlaceHolder = "Digite algo..."
 
 	w.SetContent(entry)
 
-	go func() {
-		time.Sleep(200 * time.Millisecond)
-		titlePtr, _ := syscall.UTF16PtrFromString("gix")
-		hwnd, _, _ := findWindowW.Call(0, uintptr(unsafe.Pointer(titlePtr)))
-		if hwnd != 0 {
-			removeButtons(hwnd)
-		}
-	}()
+	if desk, ok := a.(desktop.App); ok {
+		m := fyne.NewMenu("gix",
+			fyne.NewMenuItem("Exibir", func() {
+				w.Show()
+				w.RequestFocus()
+			}),
+			fyne.NewMenuItem("Sair", func() {
+				w.Close()
+				a.Quit()
+			}),
+		)
+		desk.SetSystemTrayMenu(m)
+	}
+
+	if runtime.GOOS == "windows" {
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			titlePtr, _ := syscall.UTF16PtrFromString("gix")
+			hwnd, _, _ := findWindowW.Call(0, uintptr(unsafe.Pointer(titlePtr)))
+			if hwnd != 0 {
+				removeButtons(hwnd)
+			}
+		}()
+	}
+
+	startHotkeyListener(func() {
+		w.Show()
+		w.RequestFocus()
+	})
 
 	w.ShowAndRun()
 }

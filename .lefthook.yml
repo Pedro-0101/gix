@@ -2,27 +2,8 @@
 
 commit-msg:
   commands:
-    conventional-commit:
-      run: |
-        exec < /dev/tty
-        msg=$(head -1 "{1}")
-        echo "$msg" | grep -qE '^(revert: )?(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+$'
-        if [ $? -ne 0 ]; then
-          echo ""
-          echo "  \033[31mERROR: Invalid conventional commit message\033[0m"
-          echo ""
-          echo "  Format: \033[33mtype(scope)!: description\033[0m"
-          echo ""
-          echo "  Types: \033[36mfeat\033[0m, \033[36mfix\033[0m, \033[36mdocs\033[0m, \033[36mstyle\033[0m,"
-          echo "         \033[36mrefactor\033[0m, \033[36mperf\033[0m, \033[36mtest\033[0m, \033[36mbuild\033[0m,"
-          echo "         \033[36mci\033[0m, \033[36mchore\033[0m, \033[36mrevert\033[0m"
-          echo ""
-          echo "  Example: \033[32mfeat(auth): add login endpoint\033[0m"
-          echo "           \033[32mfix(ui)!: change button color\033[0m"
-          echo ""
-          echo "  Run \033[35mnpx cz\033[0m for the interactive wizard"
-          exit 1
-        fi
+    commitlint:
+      run: npx commitlint --edit {1}
 
 pre-commit:
   commands:

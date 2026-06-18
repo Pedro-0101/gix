@@ -28,6 +28,7 @@ var (
 		"placeholder":   "Digite algo...",
 		"show":          "Exibir",
 		"quit":          "Sair",
+		"save_note":     "Salvar anotação",
 	}
 	enTranslations = map[string]string{
 		"settings":      "Settings",
@@ -46,6 +47,7 @@ var (
 		"placeholder":   "Type something...",
 		"show":          "Show",
 		"quit":          "Quit",
+		"save_note":     "Save note",
 	}
 	trMu sync.RWMutex
 )

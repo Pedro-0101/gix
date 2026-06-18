@@ -2,7 +2,9 @@ package ui
 
 import (
 	"gix/internal/config"
+	"gix/internal/db"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,13 +40,18 @@ const (
 )
 
 var (
-	a            fyne.App
-	w            fyne.Window
-	entry        *escEntry
-	settingsBtn  *widget.Button
-	desk         desktop.App
+	a             fyne.App
+	w             fyne.Window
+	entry         *escEntry
+	settingsBtn   *widget.Button
+	saveBtn       *widget.Button
+	notesList     *widget.List
+	desk          desktop.App
 	currentConfig *config.Config
-	configMu     sync.RWMutex
+	configMu      sync.RWMutex
+	database      *db.Database
+	notes         []db.Note
+	notesMu       sync.Mutex
 )
 
 var fyneKeyNameMap = map[string]fyne.KeyName{
@@ -101,9 +108,56 @@ func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
 	e.Entry.TypedKey(k)
 }
 
+func loadNotes() {
+	if database == nil {
+		return
+	}
+	list, err := database.List()
+	if err != nil {
+		return
+	}
+	notesMu.Lock()
+	notes = list
+	notesMu.Unlock()
+	if notesList != nil {
+		notesList.Refresh()
+	}
+}
+
+func saveNote() {
+	text := entry.Text
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if database == nil {
+		return
+	}
+	title := db.ExtractTitle(text)
+	_, err := database.Create(title, text)
+	if err != nil {
+		return
+	}
+	entry.SetText("")
+	loadNotes()
+}
+
+func deleteNote(id int64) {
+	if database == nil {
+		return
+	}
+	_ = database.Delete(id)
+	loadNotes()
+}
+
 func Run() {
 	cfg := config.Load()
 	setConfig(cfg)
+
+	var err error
+	database, err = db.New()
+	if err != nil {
+		database = nil
+	}
 
 	a = app.New()
 
@@ -114,7 +168,7 @@ func Run() {
 	w = a.NewWindow("gix")
 
 	w.SetFixedSize(true)
-	w.Resize(fyne.NewSize(400, 340))
+	w.Resize(fyne.NewSize(400, 500))
 
 	closeKey := fyne.KeyEscape
 	if key, ok := fyneKeyNameMap[cfg.CloseKey]; ok {
@@ -147,8 +201,55 @@ func Run() {
 		showSettingsWindow(a, w)
 	})
 
+	saveBtn = widget.NewButton(getTr("save_note"), func() {
+		saveNote()
+	})
+
+	notes = []db.Note{}
+	if database != nil {
+		notes, _ = database.List()
+	}
+
+	notesList = widget.NewList(
+		func() int {
+			notesMu.Lock()
+			n := len(notes)
+			notesMu.Unlock()
+			return n
+		},
+		func() fyne.CanvasObject {
+			label := widget.NewLabel("")
+			label.Truncation = fyne.TextTruncateEllipsis
+			delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
+			delBtn.Importance = widget.DangerImportance
+			return container.NewBorder(nil, nil, nil, delBtn, label)
+		},
+		func(id widget.ListItemID, item fyne.CanvasObject) {
+			notesMu.Lock()
+			if id >= len(notes) {
+				notesMu.Unlock()
+				return
+			}
+			n := notes[id]
+			notesMu.Unlock()
+			c := item.(*fyne.Container)
+			label := c.Objects[0].(*widget.Label)
+			delBtn := c.Objects[1].(*widget.Button)
+			label.SetText(n.Title)
+			delBtn.OnTapped = func() {
+				deleteNote(n.ID)
+			}
+		},
+	)
+
 	header := container.NewHBox(layout.NewSpacer(), settingsBtn)
-	content := container.NewBorder(header, nil, nil, nil, entry)
+	content := container.NewBorder(
+		header,
+		nil,
+		nil,
+		nil,
+		container.NewVBox(entry, saveBtn, notesList),
+	)
 	w.SetContent(content)
 
 	if d, ok := a.(desktop.App); ok {
@@ -176,4 +277,8 @@ func Run() {
 	}, cfg)
 
 	w.ShowAndRun()
+
+	if database != nil {
+		database.Close()
+	}
 }

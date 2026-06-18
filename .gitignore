@@ -1,6 +1,6 @@
 # Binaries
 gix.exe
-gix
+/gix
 *.exe
 *.test
 *.out
@@ -26,3 +26,5 @@ release/
 # OS
 .DS_Store
 Thumbs.db
+
+node_modules/

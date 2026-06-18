@@ -171,6 +171,7 @@ func Run() {
 		fyne.Do(func() {
 			w.Show()
 			w.RequestFocus()
+			w.Canvas().Focus(entry)
 		})
 	}, cfg)
 

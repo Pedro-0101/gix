@@ -1,0 +1,24 @@
+{
+  "name": "gix",
+  "version": "0.1.0",
+  "private": true,
+  "description": "gix - a Fyne-based Go application",
+  "scripts": {
+    "cz": "cz",
+    "commit": "cz",
+    "release": "goreleaser release --clean",
+    "release:snapshot": "goreleaser release --snapshot --clean",
+    "release:notes": "goreleaser changelog"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "commitizen": "^4.3.0",
+    "cz-conventional-changelog": "^3.3.0"
+  }
+}

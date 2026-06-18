@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+version: 2
+
+project_name: gix
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gix
+    main: .
+    binary: gix
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "Bug fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: "Code refactoring"
+      regexp: "^.*refactor[(\\w)]*:+.*$"
+      order: 2
+    - title: Others
+      order: 999
+
+release:
+  prerelease: auto
+  make_latest: true
+
+nfpms:
+  - id: packages
+    package_name: gix
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    maintainer: "gix maintainer"
+    description: "gix - a Fyne-based Go application"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/local/bin
+
+brews:
+  - name: gix
+    repository:
+      owner: yourusername
+      name: homebrew-tap
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/yourusername/gix"
+    description: "gix - a Fyne-based Go application"
+    license: "MIT"
+    dependencies:
+      - name: go
+        type: optional
+    install: |
+      bin.install "gix"

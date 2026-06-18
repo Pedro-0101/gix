@@ -1,0 +1,28 @@
+# Binaries
+gix.exe
+gix
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+go.work*
+
+# Fyne
+*.syso
+*.manifest
+
+# Build
+dist/
+release/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

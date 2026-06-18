@@ -1,14 +1,19 @@
 package ui
 
 import (
+	"gix/internal/config"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -32,6 +37,35 @@ const (
 	swpFrameChanged = 0x0020
 )
 
+var (
+	a            fyne.App
+	w            fyne.Window
+	entry        *escEntry
+	settingsBtn  *widget.Button
+	desk         desktop.App
+	currentConfig *config.Config
+	configMu     sync.RWMutex
+)
+
+var fyneKeyNameMap = map[string]fyne.KeyName{
+	"Space":  fyne.KeySpace,
+	"Escape": fyne.KeyEscape,
+	"Tab":    fyne.KeyTab,
+	"Enter":  fyne.KeyReturn,
+}
+
+func getConfig() *config.Config {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return currentConfig
+}
+
+func setConfig(c *config.Config) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	currentConfig = c
+}
+
 func removeButtons(hwnd uintptr) {
 	style, _, _ := getWindowLongW.Call(hwnd, gwlStyle)
 	style &^= uintptr(wsMinimizeBox | wsMaximizeBox | wsSysMenu)
@@ -42,21 +76,23 @@ func removeButtons(hwnd uintptr) {
 
 type escEntry struct {
 	widget.Entry
-	onDoubleEsc func()
+	onDoubleKey func()
 	count       int
+	keyName     fyne.KeyName
+	interval    int
 }
 
 func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
-	if k.Name == fyne.KeyEscape {
+	if k.Name == e.keyName {
 		e.count++
 		if e.count >= 2 {
 			e.count = 0
-			if e.onDoubleEsc != nil {
-				e.onDoubleEsc()
+			if e.onDoubleKey != nil {
+				e.onDoubleKey()
 			}
 			return
 		}
-		time.AfterFunc(500*time.Millisecond, func() {
+		time.AfterFunc(time.Duration(e.interval)*time.Millisecond, func() {
 			e.count = 0
 		})
 		return
@@ -66,32 +102,46 @@ func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
 }
 
 func Run() {
-	a := app.New()
-	w := a.NewWindow("gix")
+	cfg := config.Load()
+	setConfig(cfg)
+
+	a = app.New()
+
+	if cfg.Theme == "dark" {
+		a.Settings().SetTheme(theme.DarkTheme())
+	}
+
+	w = a.NewWindow("gix")
 
 	w.SetFixedSize(true)
-	w.Resize(fyne.NewSize(400, 300))
+	w.Resize(fyne.NewSize(400, 340))
 
-	entry := &escEntry{onDoubleEsc: func() {
-		w.Hide()
-	}}
+	closeKey := fyne.KeyEscape
+	if key, ok := fyneKeyNameMap[cfg.CloseKey]; ok {
+		closeKey = key
+	}
+
+	entry = &escEntry{
+		onDoubleKey: func() {
+			w.Hide()
+		},
+		keyName:  closeKey,
+		interval: cfg.CloseIntervalMs,
+	}
 	entry.ExtendBaseWidget(entry)
-	entry.PlaceHolder = "Digite algo..."
+	entry.PlaceHolder = getTr("placeholder")
 
-	w.SetContent(entry)
+	settingsBtn = widget.NewButton(getTr("settings"), func() {
+		showSettingsWindow(a, w)
+	})
 
-	if desk, ok := a.(desktop.App); ok {
-		m := fyne.NewMenu("gix",
-			fyne.NewMenuItem("Exibir", func() {
-				w.Show()
-				w.RequestFocus()
-			}),
-			fyne.NewMenuItem("Sair", func() {
-				w.Close()
-				a.Quit()
-			}),
-		)
-		desk.SetSystemTrayMenu(m)
+	header := container.NewHBox(layout.NewSpacer(), settingsBtn)
+	content := container.NewBorder(header, nil, nil, nil, entry)
+	w.SetContent(content)
+
+	if d, ok := a.(desktop.App); ok {
+		desk = d
+		rebuildTrayMenu()
 	}
 
 	if runtime.GOOS == "windows" {
@@ -108,7 +158,7 @@ func Run() {
 	startHotkeyListener(func() {
 		w.Show()
 		w.RequestFocus()
-	})
+	}, cfg)
 
 	w.ShowAndRun()
 }

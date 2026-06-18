@@ -3,7 +3,9 @@
 package ui
 
 import (
+	"gix/internal/config"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -23,8 +25,14 @@ var (
 const (
 	whKeyboardLL = 13
 	wmKeydown    = 0x0100
-	vkSpace      = 0x20
 )
+
+var vkCodeMap = map[string]uint32{
+	"Space":  0x20,
+	"Escape": 0x1B,
+	"Tab":    0x09,
+	"Enter":  0x0D,
+}
 
 type kbdLLHookStruct struct {
 	vkCode      uint32
@@ -47,7 +55,8 @@ type msg struct {
 var (
 	hookCallback      uintptr
 	hookHandle        uintptr
-	winHookDetector   *doubleSpaceDetector
+	winHookDetector   *doublePressDetector
+	winHookKeyCode    uint32 = 0x20
 )
 
 func readKbdLLVkCode(lParam uintptr) uint32 {
@@ -62,7 +71,7 @@ func readKbdLLVkCode(lParam uintptr) uint32 {
 
 func winLowLevelKeyboardProc(code int, wParam uintptr, lParam uintptr) uintptr {
 	if code >= 0 && wParam == wmKeydown {
-		if readKbdLLVkCode(lParam) == vkSpace && winHookDetector != nil {
+		if readKbdLLVkCode(lParam) == winHookKeyCode && winHookDetector != nil {
 			winHookDetector.press()
 		}
 	}
@@ -70,8 +79,12 @@ func winLowLevelKeyboardProc(code int, wParam uintptr, lParam uintptr) uintptr {
 	return ret
 }
 
-func startWindowsHook(fn func()) {
-	winHookDetector = &doubleSpaceDetector{fn: fn}
+func startWindowsHook(fn func(), cfg *config.Config) {
+	winHookKeyCode = vkCodeMap[cfg.OpenKey]
+	winHookDetector = &doublePressDetector{
+		fn:       fn,
+		interval: time.Duration(cfg.OpenIntervalMs) * time.Millisecond,
+	}
 	hookCallback = syscall.NewCallback(winLowLevelKeyboardProc)
 
 	hook, _, _ := procSetWindowsHookEx.Call(whKeyboardLL, hookCallback, 0, 0)
@@ -93,4 +106,11 @@ func startWindowsHook(fn func()) {
 	procUnhookWindowsHookEx.Call(hookHandle)
 }
 
-func startLinuxHook(fn func()) {}
+func startLinuxHook(fn func(), cfg *config.Config) {}
+
+func applyHotkeyConfig(cfg *config.Config) {
+	winHookKeyCode = vkCodeMap[cfg.OpenKey]
+	if winHookDetector != nil {
+		winHookDetector.interval = time.Duration(cfg.OpenIntervalMs) * time.Millisecond
+	}
+}

@@ -1,27 +1,29 @@
 package ui
 
 import (
+	"gix/internal/config"
 	"runtime"
 	"time"
 )
 
-func startHotkeyListener(fn func()) {
+func startHotkeyListener(fn func(), cfg *config.Config) {
 	switch runtime.GOOS {
 	case "windows":
-		go startWindowsHook(fn)
+		go startWindowsHook(fn, cfg)
 	case "linux":
-		go startLinuxHook(fn)
+		go startLinuxHook(fn, cfg)
 	}
 }
 
-type doubleSpaceDetector struct {
+type doublePressDetector struct {
 	lastPress time.Time
 	fn        func()
+	interval  time.Duration
 }
 
-func (d *doubleSpaceDetector) press() {
+func (d *doublePressDetector) press() {
 	now := time.Now()
-	if !d.lastPress.IsZero() && now.Sub(d.lastPress) <= 500*time.Millisecond {
+	if !d.lastPress.IsZero() && now.Sub(d.lastPress) <= d.interval {
 		d.lastPress = time.Time{}
 		if d.fn != nil {
 			d.fn()

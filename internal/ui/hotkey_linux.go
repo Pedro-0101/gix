@@ -4,13 +4,21 @@ package ui
 
 import (
 	"encoding/binary"
+	"gix/internal/config"
 	"os"
 	"path/filepath"
+	"time"
 )
 
+var evCodeMap = map[string]uint16{
+	"Space":  57,
+	"Escape": 1,
+	"Tab":    15,
+	"Enter":  28,
+}
+
 const (
-	evKey     = 1
-	keySpace  = 57
+	evKey = 1
 )
 
 type inputEvent struct {
@@ -21,8 +29,12 @@ type inputEvent struct {
 	value int32
 }
 
-func startLinuxHook(fn func()) {
-	detector := &doubleSpaceDetector{fn: fn}
+func startLinuxHook(fn func(), cfg *config.Config) {
+	keyCode := evCodeMap[cfg.OpenKey]
+	detector := &doublePressDetector{
+		fn:       fn,
+		interval: time.Duration(cfg.OpenIntervalMs) * time.Millisecond,
+	}
 
 	devices, err := filepath.Glob("/dev/input/event*")
 	if err != nil || len(devices) == 0 {
@@ -57,10 +69,15 @@ func startLinuxHook(fn func()) {
 	}
 
 	for ev := range eventCh {
-		if ev._type == evKey && ev.code == keySpace && ev.value == 1 {
+		if ev._type == evKey && ev.code == keyCode && ev.value == 1 {
 			detector.press()
 		}
 	}
 }
 
-func startWindowsHook(fn func()) {}
+func startWindowsHook(fn func(), cfg *config.Config) {}
+
+func applyHotkeyConfig(cfg *config.Config) {
+	// Linux hook restart would need to re-read devices
+	// For now, hotkey config changes require app restart on Linux
+}

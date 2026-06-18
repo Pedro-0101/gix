@@ -2,5 +2,8 @@
 
 package ui
 
-func startWindowsHook(fn func()) {}
-func startLinuxHook(fn func()) {}
+import "gix/internal/config"
+
+func startWindowsHook(fn func(), cfg *config.Config) {}
+func startLinuxHook(fn func(), cfg *config.Config) {}
+func applyHotkeyConfig(cfg *config.Config) {}

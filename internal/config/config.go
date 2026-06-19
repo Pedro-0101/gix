@@ -4,7 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// DefaultModel é um modelo gratuito do OpenRouter. CONFIRMAR o slug contra
+// https://openrouter.ai/models?max_price=0 na execução; trocar se necessário.
+const DefaultModel = "meta-llama/llama-3.3-70b-instruct:free"
 
 type Config struct {
 	Theme           string `json:"theme"`
@@ -13,6 +18,9 @@ type Config struct {
 	OpenIntervalMs  int    `json:"open_interval_ms"`
 	CloseKey        string `json:"close_key"`
 	CloseIntervalMs int    `json:"close_interval_ms"`
+	Model           string `json:"model"`
+	APIKey          string `json:"api_key"`
+	SystemPrompt    string `json:"system_prompt"`
 }
 
 func Default() *Config {
@@ -23,6 +31,9 @@ func Default() *Config {
 		OpenIntervalMs:  500,
 		CloseKey:        "Escape",
 		CloseIntervalMs: 500,
+		Model:           DefaultModel,
+		APIKey:          "",
+		SystemPrompt:    "Responda de forma direta e objetiva.",
 	}
 }
 
@@ -74,6 +85,13 @@ func Load() *Config {
 	if loaded.CloseIntervalMs <= 0 {
 		loaded.CloseIntervalMs = cfg.CloseIntervalMs
 	}
+	if loaded.Model == "" {
+		loaded.Model = cfg.Model
+	}
+	if loaded.SystemPrompt == "" {
+		loaded.SystemPrompt = cfg.SystemPrompt
+	}
+	// APIKey vazio é válido: cai para a variável de ambiente em ResolveAPIKey.
 	return &loaded
 }
 
@@ -83,12 +101,64 @@ func (c *Config) Save() error {
 		return err
 	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o644)
+}
+
+// ResolveAPIKey retorna a chave das settings, ou, se vazia, a variável de
+// ambiente OPEN_ROUTER_API.
+func (c *Config) ResolveAPIKey() string {
+	if strings.TrimSpace(c.APIKey) != "" {
+		return c.APIKey
+	}
+	return os.Getenv("OPEN_ROUTER_API")
+}
+
+// parseDotEnv lê linhas CHAVE=VALOR, ignorando comentários (#), linhas em
+// branco e linhas sem '='. Remove aspas simples/duplas ao redor do valor.
+func parseDotEnv(data []byte) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		if idx == -1 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		if key == "" {
+			continue
+		}
+		val := strings.Trim(strings.TrimSpace(line[idx+1:]), `"'`)
+		out[key] = val
+	}
+	return out
+}
+
+// LoadDotEnv carrega um arquivo .env (no diretório atual e ao lado do
+// executável) para variáveis de ambiente ainda não definidas.
+func LoadDotEnv() {
+	paths := []string{".env"}
+	if exe, err := os.Executable(); err == nil {
+		paths = append(paths, filepath.Join(filepath.Dir(exe), ".env"))
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for k, v := range parseDotEnv(data) {
+			if _, ok := os.LookupEnv(k); !ok {
+				os.Setenv(k, v)
+			}
+		}
+	}
 }

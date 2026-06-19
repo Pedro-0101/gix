@@ -12,42 +12,62 @@ import (
 
 var (
 	ptTranslations = map[string]string{
-		"settings":      "Configurações",
-		"theme":         "Tema",
-		"light":         "Claro",
-		"dark":          "Escuro",
-		"language":      "Idioma",
-		"portuguese":    "Português",
-		"english":       "Inglês",
-		"open_hotkey":   "Tecla para abrir",
-		"open_interval": "Intervalo para abrir (ms)",
-		"close_hotkey":  "Tecla para fechar",
+		"settings":       "Configurações",
+		"theme":          "Tema",
+		"light":          "Claro",
+		"dark":           "Escuro",
+		"language":       "Idioma",
+		"portuguese":     "Português",
+		"english":        "Inglês",
+		"open_hotkey":    "Tecla para abrir",
+		"open_interval":  "Intervalo para abrir (ms)",
+		"close_hotkey":   "Tecla para fechar",
 		"close_interval": "Intervalo para fechar (ms)",
-		"save":          "Salvar",
-		"cancel":        "Cancelar",
-		"placeholder":   "Digite algo...",
-		"show":          "Exibir",
-		"quit":          "Sair",
-		"save_note":     "Salvar anotação",
+		"model":          "Modelo",
+		"api_key":        "Chave da API",
+		"system_prompt":  "Prompt de sistema",
+		"save":           "Salvar",
+		"cancel":         "Cancelar",
+		"placeholder":    "pergunte algo…",
+		"show":           "Exibir",
+		"quit":           "Sair",
+		"history":        "Histórico",
+		"history_empty":  "Nenhuma conversa salva.",
+		"you":            "Você",
+		"ai":             "IA",
+		"thinking":       "pensando…",
+		"no_api_key":     "Configure a chave do OpenRouter nas configurações.",
+		"error_prefix":   "Erro: ",
+		"empty_response": "(sem resposta)",
 	}
 	enTranslations = map[string]string{
-		"settings":      "Settings",
-		"theme":         "Theme",
-		"light":         "Light",
-		"dark":          "Dark",
-		"language":      "Language",
-		"portuguese":    "Portuguese",
-		"english":       "English",
-		"open_hotkey":   "Open hotkey",
-		"open_interval": "Open interval (ms)",
-		"close_hotkey":  "Close hotkey",
+		"settings":       "Settings",
+		"theme":          "Theme",
+		"light":          "Light",
+		"dark":           "Dark",
+		"language":       "Language",
+		"portuguese":     "Portuguese",
+		"english":        "English",
+		"open_hotkey":    "Open hotkey",
+		"open_interval":  "Open interval (ms)",
+		"close_hotkey":   "Close hotkey",
 		"close_interval": "Close interval (ms)",
-		"save":          "Save",
-		"cancel":        "Cancel",
-		"placeholder":   "Type something...",
-		"show":          "Show",
-		"quit":          "Quit",
-		"save_note":     "Save note",
+		"model":          "Model",
+		"api_key":        "API key",
+		"system_prompt":  "System prompt",
+		"save":           "Save",
+		"cancel":         "Cancel",
+		"placeholder":    "ask something…",
+		"show":           "Show",
+		"quit":           "Quit",
+		"history":        "History",
+		"history_empty":  "No saved conversations.",
+		"you":            "You",
+		"ai":             "AI",
+		"thinking":       "thinking…",
+		"no_api_key":     "Set your OpenRouter key in settings.",
+		"error_prefix":   "Error: ",
+		"empty_response": "(no response)",
 	}
 	trMu sync.RWMutex
 )
@@ -79,6 +99,9 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 	openIntervalEntry := widget.NewEntry()
 	closeKeySelect := widget.NewSelect(keyOptions, nil)
 	closeIntervalEntry := widget.NewEntry()
+	modelEntry := widget.NewEntry()
+	apiKeyEntry := widget.NewPasswordEntry()
+	systemPromptEntry := widget.NewMultiLineEntry()
 
 	if cfg.Theme == "dark" {
 		themeRadio.SetSelected(getTr("dark"))
@@ -94,10 +117,17 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 	openIntervalEntry.SetText(strconv.Itoa(cfg.OpenIntervalMs))
 	closeKeySelect.SetSelected(cfg.CloseKey)
 	closeIntervalEntry.SetText(strconv.Itoa(cfg.CloseIntervalMs))
+	modelEntry.SetText(cfg.Model)
+	apiKeyEntry.SetText(cfg.APIKey)
+	systemPromptEntry.SetText(cfg.SystemPrompt)
 
 	form := widget.NewForm(
 		&widget.FormItem{Text: getTr("theme"), Widget: themeRadio},
 		&widget.FormItem{Text: getTr("language"), Widget: langRadio},
+		&widget.FormItem{Text: "", Widget: widget.NewSeparator()},
+		&widget.FormItem{Text: getTr("model"), Widget: modelEntry},
+		&widget.FormItem{Text: getTr("api_key"), Widget: apiKeyEntry},
+		&widget.FormItem{Text: getTr("system_prompt"), Widget: systemPromptEntry},
 		&widget.FormItem{Text: "", Widget: widget.NewSeparator()},
 		&widget.FormItem{Text: getTr("open_hotkey"), Widget: openKeySelect},
 		&widget.FormItem{Text: getTr("open_interval"), Widget: openIntervalEntry},
@@ -129,6 +159,9 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 		if interval, err := strconv.Atoi(closeIntervalEntry.Text); err == nil && interval > 0 {
 			newCfg.CloseIntervalMs = interval
 		}
+		newCfg.Model = modelEntry.Text
+		newCfg.APIKey = apiKeyEntry.Text
+		newCfg.SystemPrompt = systemPromptEntry.Text
 
 		if newCfg.Theme == "dark" {
 			a.Settings().SetTheme(theme.DarkTheme())
@@ -163,7 +196,7 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 
 	content := container.NewPadded(form)
 	sw.SetContent(content)
-	sw.Resize(fyne.NewSize(420, 520))
+	sw.Resize(fyne.NewSize(420, 620))
 	sw.CenterOnScreen()
 	sw.Show()
 }

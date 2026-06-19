@@ -1,14 +1,18 @@
 package ui
 
 import (
-	"gix/internal/config"
-	"gix/internal/db"
+	"context"
+	"errors"
 	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"gix/internal/ai"
+	"gix/internal/config"
+	"gix/internal/db"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -40,18 +44,23 @@ const (
 )
 
 var (
-	a             fyne.App
-	w             fyne.Window
-	entry         *escEntry
-	settingsBtn   *widget.Button
-	saveBtn       *widget.Button
-	notesList     *widget.List
-	desk          desktop.App
-	currentConfig *config.Config
-	configMu      sync.RWMutex
-	database      *db.Database
-	notes         []db.Note
-	notesMu       sync.Mutex
+	a              fyne.App
+	w              fyne.Window
+	entry          *escEntry
+	settingsBtn    *widget.Button
+	historyBtn     *widget.Button
+	messagesBox    *fyne.Container
+	messagesScroll *container.Scroll
+	desk           desktop.App
+	currentConfig  *config.Config
+	configMu       sync.RWMutex
+	database       *db.Database
+
+	chatMu     sync.Mutex
+	convID     int64
+	history    []ai.Message
+	streaming  bool
+	cancelFunc context.CancelFunc
 )
 
 var fyneKeyNameMap = map[string]fyne.KeyName{
@@ -87,6 +96,21 @@ type escEntry struct {
 	count       int
 	keyName     fyne.KeyName
 	interval    int
+	shiftDown   bool
+}
+
+func (e *escEntry) KeyDown(k *fyne.KeyEvent) {
+	if k.Name == desktop.KeyShiftLeft || k.Name == desktop.KeyShiftRight {
+		e.shiftDown = true
+	}
+	e.Entry.KeyDown(k)
+}
+
+func (e *escEntry) KeyUp(k *fyne.KeyEvent) {
+	if k.Name == desktop.KeyShiftLeft || k.Name == desktop.KeyShiftRight {
+		e.shiftDown = false
+	}
+	e.Entry.KeyUp(k)
 }
 
 func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
@@ -104,49 +128,163 @@ func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
 		})
 		return
 	}
+
+	if k.Name == fyne.KeyReturn || k.Name == fyne.KeyEnter {
+		if e.shiftDown {
+			e.Entry.TypedKey(k)
+		} else {
+			sendMessage()
+		}
+		return
+	}
+
 	e.count = 0
 	e.Entry.TypedKey(k)
 }
 
-func loadNotes() {
-	if database == nil {
-		return
-	}
-	list, err := database.List()
-	if err != nil {
-		return
-	}
-	notesMu.Lock()
-	notes = list
-	notesMu.Unlock()
-	if notesList != nil {
-		notesList.Refresh()
+// appendMessage adiciona um bloco de mensagem na área de chat e devolve o
+// label do corpo (para o streaming continuar atualizando). Roda na UI.
+func appendMessage(roleLabel, text string) *widget.Label {
+	prefix := widget.NewLabelWithStyle(roleLabel, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	body := widget.NewLabel(text)
+	body.Wrapping = fyne.TextWrapWord
+	messagesBox.Add(container.NewVBox(prefix, body))
+	messagesScroll.ScrollToBottom()
+	return body
+}
+
+func newConversation() {
+	chatMu.Lock()
+	convID = 0
+	history = nil
+	chatMu.Unlock()
+	if messagesBox != nil {
+		messagesBox.RemoveAll()
+		messagesBox.Refresh()
 	}
 }
 
-func saveNote() {
-	text := entry.Text
-	if strings.TrimSpace(text) == "" {
+func maybeNewConversation() {
+	chatMu.Lock()
+	has := len(history) > 0
+	chatMu.Unlock()
+	if has {
+		newConversation()
+	}
+}
+
+func showWindow() {
+	maybeNewConversation()
+	w.Show()
+	w.RequestFocus()
+	w.Canvas().Focus(entry)
+}
+
+func hideWindow() {
+	chatMu.Lock()
+	cancel := cancelFunc
+	chatMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	w.Hide()
+}
+
+func sendMessage() {
+	text := strings.TrimSpace(entry.Text)
+	if text == "" {
 		return
 	}
-	if database == nil {
+
+	chatMu.Lock()
+	isStreaming := streaming
+	chatMu.Unlock()
+	if isStreaming {
 		return
 	}
-	title := db.ExtractTitle(text)
-	_, err := database.Create(title, text)
-	if err != nil {
+
+	cfg := getConfig()
+	apiKey := cfg.ResolveAPIKey()
+	if apiKey == "" {
+		appendMessage(getTr("ai"), getTr("no_api_key"))
+		entry.SetText("")
 		return
 	}
+
 	entry.SetText("")
-	loadNotes()
-}
+	appendMessage(getTr("you"), text)
 
-func deleteNote(id int64) {
-	if database == nil {
-		return
+	chatMu.Lock()
+	if convID == 0 && database != nil {
+		if id, err := database.CreateConversation(db.ExtractTitle(text), cfg.Model); err == nil {
+			convID = id
+		}
 	}
-	_ = database.Delete(id)
-	loadNotes()
+	cid := convID
+	history = append(history, ai.Message{Role: "user", Content: text})
+	msgs := make([]ai.Message, 0, len(history)+1)
+	if strings.TrimSpace(cfg.SystemPrompt) != "" {
+		msgs = append(msgs, ai.Message{Role: "system", Content: cfg.SystemPrompt})
+	}
+	msgs = append(msgs, history...)
+	streaming = true
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelFunc = cancel
+	chatMu.Unlock()
+
+	if database != nil && cid != 0 {
+		_ = database.AddMessage(cid, "user", text)
+	}
+
+	label := appendMessage(getTr("ai"), getTr("thinking"))
+
+	go func() {
+		client := ai.New(apiKey)
+		var sb strings.Builder
+		streamErr := client.Stream(ctx, cfg.Model, msgs, func(delta string) {
+			sb.WriteString(delta)
+			current := sb.String()
+			fyne.Do(func() {
+				label.SetText(current)
+				messagesScroll.ScrollToBottom()
+			})
+		})
+		full := sb.String()
+
+		chatMu.Lock()
+		streaming = false
+		cancelFunc = nil
+		chatMu.Unlock()
+
+		switch {
+		case errors.Is(streamErr, context.Canceled):
+			if full != "" {
+				chatMu.Lock()
+				history = append(history, ai.Message{Role: "assistant", Content: full})
+				chatMu.Unlock()
+				if database != nil && cid != 0 {
+					_ = database.AddMessage(cid, "assistant", full)
+				}
+			}
+		case streamErr != nil:
+			msg := getTr("error_prefix") + streamErr.Error()
+			fyne.Do(func() {
+				label.SetText(msg)
+				messagesScroll.ScrollToBottom()
+			})
+		default:
+			if full == "" {
+				full = getTr("empty_response")
+				fyne.Do(func() { label.SetText(full) })
+			}
+			chatMu.Lock()
+			history = append(history, ai.Message{Role: "assistant", Content: full})
+			chatMu.Unlock()
+			if database != nil && cid != 0 {
+				_ = database.AddMessage(cid, "assistant", full)
+			}
+		}
+	}()
 }
 
 func Run() {
@@ -166,9 +304,8 @@ func Run() {
 	}
 
 	w = a.NewWindow("gix")
-
 	w.SetFixedSize(true)
-	w.Resize(fyne.NewSize(400, 500))
+	w.Resize(fyne.NewSize(400, 600))
 
 	closeKey := fyne.KeyEscape
 	if key, ok := fyneKeyNameMap[cfg.CloseKey]; ok {
@@ -176,19 +313,16 @@ func Run() {
 	}
 
 	entry = &escEntry{
-		onDoubleKey: func() {
-			w.Hide()
-		},
-		keyName:  closeKey,
-		interval: cfg.CloseIntervalMs,
+		onDoubleKey: hideWindow,
+		keyName:     closeKey,
+		interval:    cfg.CloseIntervalMs,
 	}
 	entry.ExtendBaseWidget(entry)
 	entry.PlaceHolder = getTr("placeholder")
+	entry.MultiLine = true
 
 	closeDetector := &doublePressDetector{
-		fn: func() {
-			w.Hide()
-		},
+		fn:       hideWindow,
 		interval: time.Duration(cfg.CloseIntervalMs) * time.Millisecond,
 	}
 	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
@@ -197,59 +331,18 @@ func Run() {
 		}
 	})
 
-	settingsBtn = widget.NewButton(getTr("settings"), func() {
+	settingsBtn = widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
 		showSettingsWindow(a, w)
 	})
-
-	saveBtn = widget.NewButton(getTr("save_note"), func() {
-		saveNote()
+	historyBtn = widget.NewButtonWithIcon("", theme.HistoryIcon(), func() {
+		showHistoryWindow(a)
 	})
 
-	notes = []db.Note{}
-	if database != nil {
-		notes, _ = database.List()
-	}
+	messagesBox = container.NewVBox()
+	messagesScroll = container.NewVScroll(messagesBox)
 
-	notesList = widget.NewList(
-		func() int {
-			notesMu.Lock()
-			n := len(notes)
-			notesMu.Unlock()
-			return n
-		},
-		func() fyne.CanvasObject {
-			label := widget.NewLabel("")
-			label.Truncation = fyne.TextTruncateEllipsis
-			delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
-			delBtn.Importance = widget.DangerImportance
-			return container.NewBorder(nil, nil, nil, delBtn, label)
-		},
-		func(id widget.ListItemID, item fyne.CanvasObject) {
-			notesMu.Lock()
-			if id >= len(notes) {
-				notesMu.Unlock()
-				return
-			}
-			n := notes[id]
-			notesMu.Unlock()
-			c := item.(*fyne.Container)
-			label := c.Objects[0].(*widget.Label)
-			delBtn := c.Objects[1].(*widget.Button)
-			label.SetText(n.Title)
-			delBtn.OnTapped = func() {
-				deleteNote(n.ID)
-			}
-		},
-	)
-
-	header := container.NewHBox(layout.NewSpacer(), settingsBtn)
-	content := container.NewBorder(
-		header,
-		nil,
-		nil,
-		nil,
-		container.NewVBox(entry, saveBtn, notesList),
-	)
+	header := container.NewHBox(layout.NewSpacer(), historyBtn, settingsBtn)
+	content := container.NewBorder(header, entry, nil, nil, messagesScroll)
 	w.SetContent(content)
 
 	if d, ok := a.(desktop.App); ok {
@@ -269,11 +362,7 @@ func Run() {
 	}
 
 	startHotkeyListener(func() {
-		fyne.Do(func() {
-			w.Show()
-			w.RequestFocus()
-			w.Canvas().Focus(entry)
-		})
+		fyne.Do(showWindow)
 	}, cfg)
 
 	w.ShowAndRun()

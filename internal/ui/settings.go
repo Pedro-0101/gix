@@ -181,10 +181,6 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 			entry.Refresh()
 		}
 
-		if settingsBtn != nil {
-			settingsBtn.SetText(getTr("settings"))
-		}
-
 		rebuildTrayMenu()
 		applyHotkeyConfig(&newCfg)
 
@@ -208,8 +204,7 @@ func rebuildTrayMenu() {
 	m := fyne.NewMenu("gix",
 		fyne.NewMenuItem(getTr("show"), func() {
 			if w != nil {
-				w.Show()
-				w.RequestFocus()
+				fyne.Do(showWindow)
 			}
 		}),
 		fyne.NewMenuItem(getTr("quit"), func() {

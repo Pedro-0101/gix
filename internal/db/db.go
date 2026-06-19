@@ -9,9 +9,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Note struct {
+type Conversation struct {
+	ID        int64
+	Title     string
+	Model     string
+	CreatedAt string
+}
+
+type Message struct {
 	ID      int64
-	Title   string
+	Role    string
 	Content string
 }
 
@@ -24,33 +31,140 @@ func New() (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, "gix", "notes.db")
+	return Open(filepath.Join(dir, "gix", "notes.db"))
+}
 
+// Open abre (ou cria) o banco no caminho dado e garante o schema.
+func Open(path string) (*Database, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS notes (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT NOT NULL,
-		content TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	)`)
-	if err != nil {
-		return nil, err
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS notes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS conversations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			model TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			conversation_id INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+		)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			return nil, err
+		}
 	}
 
 	return &Database{db: db}, nil
 }
 
+// ExtractTitle gera um título a partir da primeira linha do conteúdo,
+// truncando em 40 runas.
 func ExtractTitle(content string) string {
 	content = strings.TrimSpace(content)
-	idx := strings.Index(content, " ")
-	if idx == -1 {
-		return content
+	if i := strings.IndexByte(content, '\n'); i != -1 {
+		content = content[:i]
 	}
-	return content[:idx]
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "Conversa"
+	}
+	r := []rune(content)
+	const max = 40
+	if len(r) > max {
+		return strings.TrimSpace(string(r[:max])) + "…"
+	}
+	return content
+}
+
+func (d *Database) CreateConversation(title, model string) (int64, error) {
+	res, err := d.db.Exec("INSERT INTO conversations (title, model) VALUES (?, ?)", title, model)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *Database) AddMessage(convID int64, role, content string) error {
+	_, err := d.db.Exec(
+		"INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)",
+		convID, role, content)
+	return err
+}
+
+func (d *Database) ListConversations() ([]Conversation, error) {
+	rows, err := d.db.Query(
+		"SELECT id, title, model, created_at FROM conversations ORDER BY created_at DESC, id DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Conversation
+	for rows.Next() {
+		var c Conversation
+		if err := rows.Scan(&c.ID, &c.Title, &c.Model, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) GetMessages(convID int64) ([]Message, error) {
+	rows, err := d.db.Query(
+		"SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC", convID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) DeleteConversation(id int64) error {
+	if _, err := d.db.Exec("DELETE FROM messages WHERE conversation_id = ?", id); err != nil {
+		return err
+	}
+	_, err := d.db.Exec("DELETE FROM conversations WHERE id = ?", id)
+	return err
+}
+
+func (d *Database) Close() error {
+	return d.db.Close()
+}
+
+// --- Notas (legado; removidas na Task 6 quando window.go for reescrito) ---
+
+type Note struct {
+	ID      int64
+	Title   string
+	Content string
 }
 
 func (d *Database) Create(title, content string) (int64, error) {
@@ -82,8 +196,4 @@ func (d *Database) List() ([]Note, error) {
 func (d *Database) Delete(id int64) error {
 	_, err := d.db.Exec("DELETE FROM notes WHERE id = ?", id)
 	return err
-}
-
-func (d *Database) Close() error {
-	return d.db.Close()
 }

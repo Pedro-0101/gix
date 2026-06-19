@@ -115,7 +115,7 @@ func (c *Config) Save() error {
 // ambiente OPEN_ROUTER_API.
 func (c *Config) ResolveAPIKey() string {
 	if strings.TrimSpace(c.APIKey) != "" {
-		return c.APIKey
+		return strings.TrimSpace(c.APIKey)
 	}
 	return os.Getenv("OPEN_ROUTER_API")
 }

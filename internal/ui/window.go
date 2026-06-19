@@ -61,6 +61,7 @@ var (
 	history    []ai.Message
 	streaming  bool
 	cancelFunc context.CancelFunc
+	convGen    uint64
 )
 
 var fyneKeyNameMap = map[string]fyne.KeyName{
@@ -157,6 +158,7 @@ func newConversation() {
 	chatMu.Lock()
 	convID = 0
 	history = nil
+	convGen++
 	chatMu.Unlock()
 	if messagesBox != nil {
 		messagesBox.RemoveAll()
@@ -228,6 +230,7 @@ func sendMessage() {
 	}
 	msgs = append(msgs, history...)
 	streaming = true
+	gen := convGen
 	ctx, cancel := context.WithCancel(context.Background())
 	cancelFunc = cancel
 	chatMu.Unlock()
@@ -259,12 +262,14 @@ func sendMessage() {
 		switch {
 		case errors.Is(streamErr, context.Canceled):
 			if full != "" {
-				chatMu.Lock()
-				history = append(history, ai.Message{Role: "assistant", Content: full})
-				chatMu.Unlock()
 				if database != nil && cid != 0 {
 					_ = database.AddMessage(cid, "assistant", full)
 				}
+				chatMu.Lock()
+				if convGen == gen {
+					history = append(history, ai.Message{Role: "assistant", Content: full})
+				}
+				chatMu.Unlock()
 			}
 		case streamErr != nil:
 			msg := getTr("error_prefix") + streamErr.Error()
@@ -277,12 +282,14 @@ func sendMessage() {
 				full = getTr("empty_response")
 				fyne.Do(func() { label.SetText(full) })
 			}
-			chatMu.Lock()
-			history = append(history, ai.Message{Role: "assistant", Content: full})
-			chatMu.Unlock()
 			if database != nil && cid != 0 {
 				_ = database.AddMessage(cid, "assistant", full)
 			}
+			chatMu.Lock()
+			if convGen == gen {
+				history = append(history, ai.Message{Role: "assistant", Content: full})
+			}
+			chatMu.Unlock()
 		}
 	}()
 }

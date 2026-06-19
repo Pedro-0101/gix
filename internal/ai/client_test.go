@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStreamAccumulatesDeltas(t *testing.T) {
@@ -73,5 +74,33 @@ func TestStreamCancelled(t *testing.T) {
 	cancel()
 	if err := c.Stream(ctx, "m", []Message{{Role: "user", Content: "x"}}, func(string) {}); err == nil {
 		t.Fatal("esperava erro de contexto cancelado")
+	}
+}
+
+func TestStreamCancelledMidStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		for i := 0; i < 100; i++ {
+			if r.Context().Err() != nil {
+				return
+			}
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}))
+	defer srv.Close()
+
+	c := New("k")
+	c.baseURL = srv.URL
+	err := c.Stream(ctx, "m", []Message{{Role: "user", Content: "x"}}, func(s string) {
+		cancel() // cancela ao receber o primeiro delta (mid-stream)
+	})
+	if err == nil {
+		t.Fatal("esperava erro de cancelamento mid-stream")
 	}
 }

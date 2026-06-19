@@ -148,6 +148,9 @@ func (d *Database) GetMessages(convID int64) ([]Message, error) {
 }
 
 func (d *Database) DeleteConversation(id int64) error {
+	// SQLite não força foreign keys por padrão e não habilitamos o PRAGMA,
+	// então a remoção em cascata é manual: apagar as mensagens antes da
+	// conversa. Manter esta ordem.
 	if _, err := d.db.Exec("DELETE FROM messages WHERE conversation_id = ?", id); err != nil {
 		return err
 	}

@@ -52,6 +52,10 @@ func removeTitleBar(hwnd uintptr) {
 	setWindowLongW.Call(hwnd, gwlStyle, style)
 	setWindowPos.Call(hwnd, 0, 0, 0, 0, 0,
 		swpNoMove|swpNoSize|swpNoZOrder|swpFrameChanged)
+
+	fyne.Do(func() {
+		w.Resize(w.Canvas().Size())
+	})
 }
 
 var (

@@ -9,10 +9,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-const (
-	cardMinWidthFrac = 0.30
-	cardMaxWidthFrac = 0.75
-)
+const cardMaxWidthFrac = 0.75
 
 type chatCard struct {
 	widget.BaseWidget
@@ -30,77 +27,79 @@ func newChatCard(text string, isUser bool) *chatCard {
 	return c
 }
 
+func (c *chatCard) bodyText() string {
+	return c.body.Text
+}
+
 func (c *chatCard) CreateRenderer() fyne.WidgetRenderer {
-	role := getTr("ai")
+	roleLabel := widget.NewLabelWithStyle(getTr("ai"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	if c.isUser {
-		role = getTr("you")
+		roleLabel.SetText(getTr("you"))
 	}
-	roleLabel := widget.NewLabelWithStyle(role, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		w.Clipboard().SetContent(c.body.Text)
+		w.Clipboard().SetContent(c.bodyText())
 	})
 	copyBtn.Importance = widget.LowImportance
 
 	header := container.NewHBox(roleLabel, layout.NewSpacer(), copyBtn)
-	inner := container.NewBorder(header, nil, nil, nil, c.body)
 
 	bg := canvas.NewRectangle(theme.InputBackgroundColor())
 	bg.CornerRadius = 12
 	bg.StrokeWidth = 0
 
-	padded := container.NewPadded(inner)
-	bubble := container.NewStack(bg, padded)
+	bodyPadded := container.NewPadded(c.body)
+	bodyBubble := container.NewStack(bg, bodyPadded)
+
+	content := container.NewVBox(header, bodyBubble)
 
 	return &chatCardRenderer{
-		card:    c,
-		bg:      bg,
-		inner:   inner,
-		bubble:  bubble,
-		role:    roleLabel,
-		copyBtn: copyBtn,
+		card:   c,
+		bg:     bg,
+		body:   bodyBubble,
+		header: header,
+		content: content,
 	}
 }
 
 type chatCardRenderer struct {
 	card    *chatCard
 	bg      *canvas.Rectangle
-	inner   *fyne.Container
-	bubble  *fyne.Container
-	role    *widget.Label
-	copyBtn *widget.Button
+	body    *fyne.Container
+	header  *fyne.Container
+	content *fyne.Container
 }
 
 func (r *chatCardRenderer) Layout(size fyne.Size) {
-	minW := size.Width * cardMinWidthFrac
-	maxW := size.Width * cardMaxWidthFrac
-	bubbleMinW := r.bubble.MinSize().Width
-	bubbleW := max(minW, min(maxW, bubbleMinW))
+	bubbleW := size.Width * cardMaxWidthFrac
+	minW := r.content.MinSize().Width
+	if bubbleW < minW {
+		bubbleW = minW
+	}
+	if bubbleW > size.Width {
+		bubbleW = size.Width
+	}
 
 	if r.card.isUser {
-		r.bubble.Resize(fyne.NewSize(bubbleW, size.Height))
-		r.bubble.Move(fyne.NewPos(size.Width-bubbleW, 0))
+		r.content.Resize(fyne.NewSize(bubbleW, size.Height))
+		r.content.Move(fyne.NewPos(size.Width-bubbleW, 0))
 	} else {
-		r.bubble.Resize(fyne.NewSize(bubbleW, size.Height))
-		r.bubble.Move(fyne.NewPos(0, 0))
+		r.content.Resize(fyne.NewSize(bubbleW, size.Height))
+		r.content.Move(fyne.NewPos(0, 0))
 	}
 }
 
 func (r *chatCardRenderer) MinSize() fyne.Size {
-	return r.bubble.MinSize()
+	return r.content.MinSize()
 }
 
 func (r *chatCardRenderer) Refresh() {
-	if r.card.isUser {
-		r.bg.FillColor = theme.PrimaryColor()
-	} else {
-		r.bg.FillColor = theme.InputBackgroundColor()
-	}
+	r.bg.FillColor = theme.InputBackgroundColor()
 	canvas.Refresh(r.bg)
 }
 
 func (r *chatCardRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{r.bubble}
+	return []fyne.CanvasObject{r.content}
 }
 
 func (r *chatCardRenderer) Destroy() {}

@@ -350,7 +350,9 @@ func Run() {
 	a = app.New()
 
 	if cfg.Theme == "dark" {
-		a.Settings().SetTheme(theme.DarkTheme())
+		applyTheme(theme.DarkTheme())
+	} else {
+		applyTheme(theme.LightTheme())
 	}
 
 	w = a.NewWindow("gix")

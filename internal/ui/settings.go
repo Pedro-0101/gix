@@ -168,9 +168,9 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 		newCfg.SystemPrompt = systemPromptEntry.Text
 
 		if newCfg.Theme == "dark" {
-			a.Settings().SetTheme(theme.DarkTheme())
+			applyTheme(theme.DarkTheme())
 		} else {
-			a.Settings().SetTheme(theme.LightTheme())
+			applyTheme(theme.LightTheme())
 		}
 
 		newCfg.Save()

@@ -48,11 +48,8 @@ func showHistoryWindow(a fyne.App) {
 			}
 			prefix := widget.NewLabelWithStyle(role, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-			body := widget.NewEntry()
-			body.SetText(m.Content)
-			body.MultiLine = true
+			body := widget.NewLabel(m.Content)
 			body.Wrapping = fyne.TextWrapWord
-			body.Disable()
 
 			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 				hw.Clipboard().SetContent(body.Text)
@@ -60,7 +57,7 @@ func showHistoryWindow(a fyne.App) {
 			copyBtn.Importance = widget.LowImportance
 
 			header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
-			card := widget.NewCard("", "", container.NewVBox(header, body))
+			card := newChatCard(container.NewVBox(header, body))
 			detail.Add(card)
 		}
 		detail.Refresh()

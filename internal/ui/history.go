@@ -60,7 +60,8 @@ func showHistoryWindow(a fyne.App) {
 			copyBtn.Importance = widget.LowImportance
 
 			header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
-			detail.Add(container.NewVBox(header, body))
+			card := widget.NewCard("", "", container.NewVBox(header, body))
+			detail.Add(card)
 		}
 		detail.Refresh()
 		detailScroll.ScrollToTop()

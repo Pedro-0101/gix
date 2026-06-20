@@ -160,7 +160,8 @@ func appendMessage(roleLabel, text string) *widget.Entry {
 	copyBtn.Importance = widget.LowImportance
 
 	header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
-	messagesBox.Add(container.NewVBox(header, body))
+	card := widget.NewCard("", "", container.NewVBox(header, body))
+	messagesBox.Add(card)
 	messagesScroll.ScrollToBottom()
 	return body
 }

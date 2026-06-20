@@ -25,12 +25,14 @@ import (
 )
 
 var (
-	user32         = syscall.NewLazyDLL("user32.dll")
-	findWindowW    = user32.NewProc("FindWindowW")
-	getWindowLongW = user32.NewProc("GetWindowLongW")
-	setWindowLongW = user32.NewProc("SetWindowLongW")
-	setWindowPos   = user32.NewProc("SetWindowPos")
-	getClientRect  = user32.NewProc("GetClientRect")
+	user32               = syscall.NewLazyDLL("user32.dll")
+	findWindowW          = user32.NewProc("FindWindowW")
+	getWindowLongW       = user32.NewProc("GetWindowLongW")
+	setWindowLongW       = user32.NewProc("SetWindowLongW")
+	setWindowPos         = user32.NewProc("SetWindowPos")
+	getClientRect        = user32.NewProc("GetClientRect")
+	getWindowRect        = user32.NewProc("GetWindowRect")
+	systemParametersInfo = user32.NewProc("SystemParametersInfoW")
 )
 
 type winRect struct {
@@ -49,12 +51,37 @@ const (
 	swpNoMove       = 0x0002
 	swpNoZOrder     = 0x0004
 	swpFrameChanged = 0x0020
+
+	spiGetWorkArea = 0x0030
 )
 
 func clientSize(hwnd uintptr) (int32, int32) {
 	var rc winRect
 	getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
 	return rc.right - rc.left, rc.bottom - rc.top
+}
+
+// centerWindow positions hwnd at the center of the monitor work area (the
+// desktop minus the taskbar), so the window has equal margins on every side.
+func centerWindow(hwnd uintptr) {
+	var work winRect
+	if ret, _, _ := systemParametersInfo.Call(spiGetWorkArea, 0,
+		uintptr(unsafe.Pointer(&work)), 0); ret == 0 {
+		return
+	}
+
+	var win winRect
+	if ret, _, _ := getWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&win))); ret == 0 {
+		return
+	}
+
+	winW := win.right - win.left
+	winH := win.bottom - win.top
+	x := work.left + (work.right-work.left-winW)/2
+	y := work.top + (work.bottom-work.top-winH)/2
+
+	setWindowPos.Call(hwnd, 0, uintptr(x), uintptr(y), 0, 0,
+		swpNoSize|swpNoZOrder)
 }
 
 func removeTitleBar(hwnd uintptr) {
@@ -94,6 +121,7 @@ var (
 	currentConfig  *config.Config
 	configMu       sync.RWMutex
 	database       *db.Database
+	cmdRegistry    *CommandRegistry
 
 	chatMu     sync.Mutex
 	convID     int64
@@ -245,6 +273,11 @@ func sendMessage() {
 		return
 	}
 
+	if cmdRegistry.Execute(text) {
+		entry.SetText("")
+		return
+	}
+
 	chatMu.Lock()
 	isStreaming := streaming
 	chatMu.Unlock()
@@ -386,6 +419,9 @@ func Run() {
 	entry.ExtendBaseWidget(entry)
 	entry.PlaceHolder = getTr("placeholder")
 	entry.MultiLine = true
+
+	cmdRegistry = newCommandRegistry()
+	cmdRegistry.Register(&newCommand{})
 	entry.Wrapping = fyne.TextWrapWord
 
 	closeDetector := &doublePressDetector{
@@ -430,6 +466,11 @@ func Run() {
 			hwnd, _, _ := findWindowW.Call(0, uintptr(unsafe.Pointer(titlePtr)))
 			if hwnd != 0 {
 				removeTitleBar(hwnd)
+				// The canvas resize in removeTitleBar lands asynchronously on
+				// the GLFW thread; wait for the window to reach its final size
+				// before centering so the margins come out equal.
+				time.Sleep(200 * time.Millisecond)
+				centerWindow(hwnd)
 			}
 		}()
 	}

@@ -39,6 +39,7 @@ var (
 		"no_api_key":     "Configure a chave do OpenRouter nas configurações.",
 		"error_prefix":   "Erro: ",
 		"empty_response": "(sem resposta)",
+		"copy":           "Copiar",
 	}
 	enTranslations = map[string]string{
 		"settings":       "Settings",
@@ -68,6 +69,7 @@ var (
 		"no_api_key":     "Set your OpenRouter key in settings.",
 		"error_prefix":   "Error: ",
 		"empty_response": "(no response)",
+		"copy":           "Copy",
 	}
 	trMu sync.RWMutex
 )

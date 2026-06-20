@@ -144,12 +144,23 @@ func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
 }
 
 // appendMessage adiciona um bloco de mensagem na área de chat e devolve o
-// label do corpo (para o streaming continuar atualizando). Roda na UI.
-func appendMessage(roleLabel, text string) *widget.Label {
+// entry do corpo (para o streaming continuar atualizando). Roda na UI.
+func appendMessage(roleLabel, text string) *widget.Entry {
 	prefix := widget.NewLabelWithStyle(roleLabel, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	body := widget.NewLabel(text)
+
+	body := widget.NewEntry()
+	body.SetText(text)
+	body.MultiLine = true
 	body.Wrapping = fyne.TextWrapWord
-	messagesBox.Add(container.NewVBox(prefix, body))
+	body.Disable()
+
+	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		w.Clipboard().SetContent(body.Text)
+	})
+	copyBtn.Importance = widget.LowImportance
+
+	header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
+	messagesBox.Add(container.NewVBox(header, body))
 	messagesScroll.ScrollToBottom()
 	return body
 }

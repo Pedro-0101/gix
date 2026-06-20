@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -46,9 +47,20 @@ func showHistoryWindow(a fyne.App) {
 				role = getTr("you")
 			}
 			prefix := widget.NewLabelWithStyle(role, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-			body := widget.NewLabel(m.Content)
+
+			body := widget.NewEntry()
+			body.SetText(m.Content)
+			body.MultiLine = true
 			body.Wrapping = fyne.TextWrapWord
-			detail.Add(container.NewVBox(prefix, body))
+			body.Disable()
+
+			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+				hw.Clipboard().SetContent(body.Text)
+			})
+			copyBtn.Importance = widget.LowImportance
+
+			header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
+			detail.Add(container.NewVBox(header, body))
 		}
 		detail.Refresh()
 		detailScroll.ScrollToTop()

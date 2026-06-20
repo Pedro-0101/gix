@@ -5,7 +5,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -42,22 +41,8 @@ func showHistoryWindow(a fyne.App) {
 			return
 		}
 		for _, m := range msgs {
-			role := getTr("ai")
-			if m.Role == "user" {
-				role = getTr("you")
-			}
-			prefix := widget.NewLabelWithStyle(role, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-
-			body := widget.NewLabel(m.Content)
-			body.Wrapping = fyne.TextWrapWord
-
-			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-				hw.Clipboard().SetContent(body.Text)
-			})
-			copyBtn.Importance = widget.LowImportance
-
-			header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
-			card := newChatCard(container.NewVBox(header, body))
+			isUser := m.Role == "user"
+			card := newChatCard(m.Content, isUser)
 			detail.Add(card)
 		}
 		detail.Refresh()

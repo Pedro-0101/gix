@@ -149,24 +149,11 @@ func (e *escEntry) TypedKey(k *fyne.KeyEvent) {
 	e.Entry.TypedKey(k)
 }
 
-// appendMessage adiciona um bloco de mensagem na área de chat e devolve o
-// entry do corpo (para o streaming continuar atualizando). Roda na UI.
-func appendMessage(roleLabel, text string) *widget.Label {
-	prefix := widget.NewLabelWithStyle(roleLabel, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-
-	body := widget.NewLabel(text)
-	body.Wrapping = fyne.TextWrapWord
-
-	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		w.Clipboard().SetContent(body.Text)
-	})
-	copyBtn.Importance = widget.LowImportance
-
-	header := container.NewHBox(prefix, layout.NewSpacer(), copyBtn)
-	card := newChatCard(container.NewVBox(header, body))
+func appendMessage(text string, isUser bool) *widget.Label {
+	card := newChatCard(text, isUser)
 	messagesBox.Add(card)
 	messagesScroll.ScrollToBottom()
-	return body
+	return card.body
 }
 
 func updateUsageLabel() {
@@ -241,13 +228,13 @@ func sendMessage() {
 	cfg := getConfig()
 	apiKey := cfg.ResolveAPIKey()
 	if apiKey == "" {
-		appendMessage(getTr("ai"), getTr("no_api_key"))
+		appendMessage(getTr("no_api_key"), false)
 		entry.SetText("")
 		return
 	}
 
 	entry.SetText("")
-	appendMessage(getTr("you"), text)
+	appendMessage(text, true)
 
 	chatMu.Lock()
 	if convID == 0 && database != nil {
@@ -272,7 +259,7 @@ func sendMessage() {
 		_ = database.AddMessage(cid, "user", text)
 	}
 
-	label := appendMessage(getTr("ai"), getTr("thinking"))
+	label := appendMessage(getTr("thinking"), false)
 
 	go func() {
 		client := ai.New(apiKey)
@@ -357,7 +344,7 @@ func Run() {
 
 	w = a.NewWindow("gix")
 	w.SetFixedSize(true)
-	w.Resize(fyne.NewSize(480, 400))
+	w.Resize(fyne.NewSize(640, 480))
 
 	closeKey := fyne.KeyEscape
 	if key, ok := fyneKeyNameMap[cfg.CloseKey]; ok {
@@ -372,6 +359,7 @@ func Run() {
 	entry.ExtendBaseWidget(entry)
 	entry.PlaceHolder = getTr("placeholder")
 	entry.MultiLine = true
+	entry.Wrapping = fyne.TextWrapWord
 
 	closeDetector := &doublePressDetector{
 		fn:       hideWindow,
@@ -419,6 +407,7 @@ func Run() {
 		}()
 	}
 
+	w.Canvas().Focus(entry)
 	w.ShowAndRun()
 
 	if database != nil {

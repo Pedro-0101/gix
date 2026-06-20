@@ -34,7 +34,7 @@ func TestStreamAccumulatesDeltas(t *testing.T) {
 	c.baseURL = srv.URL
 
 	var got strings.Builder
-	err := c.Stream(context.Background(), "m", []Message{{Role: "user", Content: "oi"}},
+	_, err := c.Stream(context.Background(), "m", []Message{{Role: "user", Content: "oi"}},
 		func(s string) { got.WriteString(s) })
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
@@ -53,7 +53,7 @@ func TestStreamErrorOnNon2xx(t *testing.T) {
 
 	c := New("ruim")
 	c.baseURL = srv.URL
-	err := c.Stream(context.Background(), "m", []Message{{Role: "user", Content: "x"}}, func(string) {})
+	_, err := c.Stream(context.Background(), "m", []Message{{Role: "user", Content: "x"}}, func(string) {})
 	if err == nil {
 		t.Fatal("esperava erro, veio nil")
 	}
@@ -72,7 +72,7 @@ func TestStreamCancelled(t *testing.T) {
 	c.baseURL = srv.URL
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := c.Stream(ctx, "m", []Message{{Role: "user", Content: "x"}}, func(string) {}); err == nil {
+	if _, err := c.Stream(ctx, "m", []Message{{Role: "user", Content: "x"}}, func(string) {}); err == nil {
 		t.Fatal("esperava erro de contexto cancelado")
 	}
 }
@@ -97,7 +97,7 @@ func TestStreamCancelledMidStream(t *testing.T) {
 
 	c := New("k")
 	c.baseURL = srv.URL
-	err := c.Stream(ctx, "m", []Message{{Role: "user", Content: "x"}}, func(s string) {
+	_, err := c.Stream(ctx, "m", []Message{{Role: "user", Content: "x"}}, func(s string) {
 		cancel() // cancela ao receber o primeiro delta (mid-stream)
 	})
 	if err == nil {

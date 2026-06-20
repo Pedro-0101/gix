@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -33,6 +34,8 @@ var (
 
 const (
 	gwlStyle      = ^uintptr(15)
+	wsCaption     = 0x00C00000
+	wsThickFrame  = 0x00040000
 	wsMinimizeBox = 0x00020000
 	wsMaximizeBox = 0x00010000
 	wsSysMenu     = 0x00080000
@@ -43,6 +46,14 @@ const (
 	swpFrameChanged = 0x0020
 )
 
+func removeTitleBar(hwnd uintptr) {
+	style, _, _ := getWindowLongW.Call(hwnd, gwlStyle)
+	style &^= uintptr(wsCaption | wsThickFrame | wsMinimizeBox | wsMaximizeBox | wsSysMenu)
+	setWindowLongW.Call(hwnd, gwlStyle, style)
+	setWindowPos.Call(hwnd, 0, 0, 0, 0, 0,
+		swpNoMove|swpNoSize|swpNoZOrder|swpFrameChanged)
+}
+
 var (
 	a              fyne.App
 	w              fyne.Window
@@ -51,6 +62,7 @@ var (
 	historyBtn     *widget.Button
 	messagesBox    *fyne.Container
 	messagesScroll *container.Scroll
+	usageLabel     *widget.Label
 	desk           desktop.App
 	currentConfig  *config.Config
 	configMu       sync.RWMutex
@@ -62,6 +74,8 @@ var (
 	streaming  bool
 	cancelFunc context.CancelFunc
 	convGen    uint64
+	convTokens int
+	convCost   float64
 )
 
 var fyneKeyNameMap = map[string]fyne.KeyName{
@@ -81,14 +95,6 @@ func setConfig(c *config.Config) {
 	configMu.Lock()
 	defer configMu.Unlock()
 	currentConfig = c
-}
-
-func removeButtons(hwnd uintptr) {
-	style, _, _ := getWindowLongW.Call(hwnd, gwlStyle)
-	style &^= uintptr(wsMinimizeBox | wsMaximizeBox | wsSysMenu)
-	setWindowLongW.Call(hwnd, gwlStyle, style)
-	setWindowPos.Call(hwnd, 0, 0, 0, 0, 0,
-		swpNoMove|swpNoSize|swpNoZOrder|swpFrameChanged)
 }
 
 type escEntry struct {
@@ -163,16 +169,34 @@ func appendMessage(roleLabel, text string) *widget.Label {
 	return body
 }
 
+func updateUsageLabel() {
+	if usageLabel == nil {
+		return
+	}
+	chatMu.Lock()
+	tok := convTokens
+	cst := convCost
+	chatMu.Unlock()
+	if tok == 0 {
+		usageLabel.SetText("")
+		return
+	}
+	usageLabel.SetText(fmt.Sprintf("Tokens: %d  |  $%.6f", tok, cst))
+}
+
 func newConversation() {
 	chatMu.Lock()
 	convID = 0
 	history = nil
 	convGen++
+	convTokens = 0
+	convCost = 0
 	chatMu.Unlock()
 	if messagesBox != nil {
 		messagesBox.RemoveAll()
 		messagesBox.Refresh()
 	}
+	updateUsageLabel()
 }
 
 func maybeNewConversation() {
@@ -253,7 +277,7 @@ func sendMessage() {
 	go func() {
 		client := ai.New(apiKey)
 		var sb strings.Builder
-		streamErr := client.Stream(ctx, cfg.Model, msgs, func(delta string) {
+		usage, streamErr := client.Stream(ctx, cfg.Model, msgs, func(delta string) {
 			sb.WriteString(delta)
 			current := sb.String()
 			fyne.Do(func() {
@@ -266,7 +290,17 @@ func sendMessage() {
 		chatMu.Lock()
 		streaming = false
 		cancelFunc = nil
+		if usage != nil {
+			convTokens += usage.TotalTokens
+			if p, ok := config.ModelPrices[cfg.Model]; ok {
+				convCost += p.CalculateCost(usage.PromptTokens, usage.CompletionTokens)
+			}
+		}
 		chatMu.Unlock()
+
+		fyne.Do(func() {
+			updateUsageLabel()
+		})
 
 		switch {
 		case errors.Is(streamErr, context.Canceled):
@@ -321,7 +355,7 @@ func Run() {
 
 	w = a.NewWindow("gix")
 	w.SetFixedSize(true)
-	w.Resize(fyne.NewSize(400, 600))
+	w.Resize(fyne.NewSize(480, 400))
 
 	closeKey := fyne.KeyEscape
 	if key, ok := fyneKeyNameMap[cfg.CloseKey]; ok {
@@ -357,7 +391,9 @@ func Run() {
 	messagesBox = container.NewVBox()
 	messagesScroll = container.NewVScroll(messagesBox)
 
-	header := container.NewHBox(layout.NewSpacer(), historyBtn, settingsBtn)
+	usageLabel = widget.NewLabel("")
+	usageLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	header := container.NewHBox(usageLabel, layout.NewSpacer(), historyBtn, settingsBtn)
 	content := container.NewBorder(header, entry, nil, nil, messagesScroll)
 	w.SetContent(content)
 
@@ -366,20 +402,20 @@ func Run() {
 		rebuildTrayMenu()
 	}
 
+	startHotkeyListener(func() {
+		fyne.Do(showWindow)
+	}, cfg)
+
 	if runtime.GOOS == "windows" {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
 			titlePtr, _ := syscall.UTF16PtrFromString("gix")
 			hwnd, _, _ := findWindowW.Call(0, uintptr(unsafe.Pointer(titlePtr)))
 			if hwnd != 0 {
-				removeButtons(hwnd)
+				removeTitleBar(hwnd)
 			}
 		}()
 	}
-
-	startHotkeyListener(func() {
-		fyne.Do(showWindow)
-	}, cfg)
 
 	w.ShowAndRun()
 

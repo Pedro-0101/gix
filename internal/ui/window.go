@@ -30,7 +30,12 @@ var (
 	getWindowLongW = user32.NewProc("GetWindowLongW")
 	setWindowLongW = user32.NewProc("SetWindowLongW")
 	setWindowPos   = user32.NewProc("SetWindowPos")
+	getClientRect  = user32.NewProc("GetClientRect")
 )
+
+type winRect struct {
+	left, top, right, bottom int32
+}
 
 const (
 	gwlStyle      = ^uintptr(15)
@@ -46,6 +51,12 @@ const (
 	swpFrameChanged = 0x0020
 )
 
+func clientSize(hwnd uintptr) (int32, int32) {
+	var rc winRect
+	getClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+	return rc.right - rc.left, rc.bottom - rc.top
+}
+
 func removeTitleBar(hwnd uintptr) {
 	style, _, _ := getWindowLongW.Call(hwnd, gwlStyle)
 	style &^= uintptr(wsCaption | wsThickFrame | wsMinimizeBox | wsMaximizeBox | wsSysMenu)
@@ -53,8 +64,20 @@ func removeTitleBar(hwnd uintptr) {
 	setWindowPos.Call(hwnd, 0, 0, 0, 0, 0,
 		swpNoMove|swpNoSize|swpNoZOrder|swpFrameChanged)
 
+	// Dropping the native frame enlarges the client area by the former
+	// title-bar/border height, but this fixed-size window's canvas does not
+	// follow (GLFW keeps the size limits it computed while the caption still
+	// existed). The GL viewport is derived from the canvas size and anchored
+	// at the bottom, so a shorter canvas renders content above the cursor's
+	// frame of reference and clicks land off by the title-bar height.
+	// Resync Fyne's canvas to the real client area to keep hit-testing aligned.
+	clientW, clientH := clientSize(hwnd)
 	fyne.Do(func() {
-		w.Resize(w.Canvas().Size())
+		scl := w.Canvas().Scale()
+		if scl <= 0 {
+			scl = 1
+		}
+		w.Resize(fyne.NewSize(float32(clientW)/scl, float32(clientH)/scl))
 	})
 }
 
@@ -62,8 +85,8 @@ var (
 	a              fyne.App
 	w              fyne.Window
 	entry          *escEntry
-	settingsBtn    *widget.Button
-	historyBtn     *widget.Button
+	settingsBtn    *cursorButton
+	historyBtn     *cursorButton
 	messagesBox    *fyne.Container
 	messagesScroll *container.Scroll
 	usageLabel     *widget.Label
@@ -375,10 +398,10 @@ func Run() {
 		}
 	})
 
-	settingsBtn = widget.NewButtonWithIcon("", theme.SettingsIcon(), func() {
+	settingsBtn = newIconButton(theme.SettingsIcon(), func() {
 		showSettingsWindow(a, w)
 	})
-	historyBtn = widget.NewButtonWithIcon("", theme.HistoryIcon(), func() {
+	historyBtn = newIconButton(theme.HistoryIcon(), func() {
 		showHistoryWindow(a)
 	})
 

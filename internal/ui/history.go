@@ -55,7 +55,7 @@ func showHistoryWindow(a fyne.App) {
 		func() fyne.CanvasObject {
 			label := widget.NewLabel("")
 			label.Truncation = fyne.TextTruncateEllipsis
-			delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), nil)
+			delBtn := newIconButton(theme.DeleteIcon(), nil)
 			delBtn.Importance = widget.DangerImportance
 			return container.NewBorder(nil, nil, nil, delBtn, label)
 		},
@@ -66,7 +66,7 @@ func showHistoryWindow(a fyne.App) {
 			c := convs[id]
 			row := item.(*fyne.Container)
 			label := row.Objects[0].(*widget.Label)
-			delBtn := row.Objects[1].(*widget.Button)
+			delBtn := row.Objects[1].(*cursorButton)
 			label.SetText(c.Title)
 			delBtn.OnTapped = func() {
 				_ = database.DeleteConversation(c.ID)

@@ -37,7 +37,7 @@ func (c *chatCard) CreateRenderer() fyne.WidgetRenderer {
 		roleLabel.SetText(getTr("you"))
 	}
 
-	copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+	copyBtn := newIconButton(theme.ContentCopyIcon(), func() {
 		w.Clipboard().SetContent(c.bodyText())
 	})
 	copyBtn.Importance = widget.LowImportance

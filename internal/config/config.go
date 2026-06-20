@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// DefaultModel é um modelo gratuito do OpenRouter. CONFIRMAR o slug contra
-// https://openrouter.ai/models?max_price=0 na execução; trocar se necessário.
-const DefaultModel = "meta-llama/llama-3.3-70b-instruct:free"
+// DefaultModel é um modelo barato do OpenRouter que consome créditos.
+const DefaultModel = "google/gemini-2.0-flash-lite-001"
 
 type Config struct {
 	Theme           string `json:"theme"`
@@ -112,12 +111,12 @@ func (c *Config) Save() error {
 }
 
 // ResolveAPIKey retorna a chave das settings, ou, se vazia, a variável de
-// ambiente OPEN_ROUTER_API.
+// ambiente OPENROUTER_API_KEY.
 func (c *Config) ResolveAPIKey() string {
 	if strings.TrimSpace(c.APIKey) != "" {
 		return strings.TrimSpace(c.APIKey)
 	}
-	return os.Getenv("OPEN_ROUTER_API")
+	return os.Getenv("OPENROUTER_API_KEY")
 }
 
 // parseDotEnv lê linhas CHAVE=VALOR, ignorando comentários (#), linhas em

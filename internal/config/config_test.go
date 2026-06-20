@@ -7,11 +7,11 @@ import (
 )
 
 func TestParseDotEnv(t *testing.T) {
-	in := []byte("# comentario\nOPEN_ROUTER_API=abc123\n\nQUOTED=\"com espaco\"\nSEM_IGUAL\nVAZIO=\n")
+	in := []byte("# comentario\nOPENROUTER_API_KEY=abc123\n\nQUOTED=\"com espaco\"\nSEM_IGUAL\nVAZIO=\n")
 	got := parseDotEnv(in)
 
-	if got["OPEN_ROUTER_API"] != "abc123" {
-		t.Errorf("OPEN_ROUTER_API = %q, want %q", got["OPEN_ROUTER_API"], "abc123")
+	if got["OPENROUTER_API_KEY"] != "abc123" {
+		t.Errorf("OPENROUTER_API_KEY = %q, want %q", got["OPENROUTER_API_KEY"], "abc123")
 	}
 	if got["QUOTED"] != "com espaco" {
 		t.Errorf("QUOTED = %q, want %q", got["QUOTED"], "com espaco")
@@ -31,7 +31,7 @@ func TestParseDotEnv(t *testing.T) {
 }
 
 func TestResolveAPIKeyPrefersConfig(t *testing.T) {
-	t.Setenv("OPEN_ROUTER_API", "do-ambiente")
+	t.Setenv("OPENROUTER_API_KEY", "do-ambiente")
 	c := &Config{APIKey: "das-settings"}
 	if got := c.ResolveAPIKey(); got != "das-settings" {
 		t.Errorf("ResolveAPIKey() = %q, want %q", got, "das-settings")
@@ -39,7 +39,7 @@ func TestResolveAPIKeyPrefersConfig(t *testing.T) {
 }
 
 func TestResolveAPIKeyFallsBackToEnv(t *testing.T) {
-	t.Setenv("OPEN_ROUTER_API", "do-ambiente")
+	t.Setenv("OPENROUTER_API_KEY", "do-ambiente")
 	c := &Config{APIKey: ""}
 	if got := c.ResolveAPIKey(); got != "do-ambiente" {
 		t.Errorf("ResolveAPIKey() = %q, want %q", got, "do-ambiente")
@@ -48,15 +48,15 @@ func TestResolveAPIKeyFallsBackToEnv(t *testing.T) {
 
 func TestLoadDotEnvDoesNotOverwriteExisting(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("OPEN_ROUTER_API=do-arquivo\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("OPENROUTER_API_KEY=do-arquivo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
-	t.Setenv("OPEN_ROUTER_API", "ja-definido")
+	t.Setenv("OPENROUTER_API_KEY", "ja-definido")
 
 	LoadDotEnv()
 
-	if got := os.Getenv("OPEN_ROUTER_API"); got != "ja-definido" {
+	if got := os.Getenv("OPENROUTER_API_KEY"); got != "ja-definido" {
 		t.Errorf("LoadDotEnv sobrescreveu var existente: got %q, want %q", got, "ja-definido")
 	}
 }

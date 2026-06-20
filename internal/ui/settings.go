@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"sync"
 
+	"gix/internal/config"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
@@ -101,7 +103,7 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 	openIntervalEntry := widget.NewEntry()
 	closeKeySelect := widget.NewSelect(keyOptions, nil)
 	closeIntervalEntry := widget.NewEntry()
-	modelEntry := widget.NewEntry()
+	modelSelect := widget.NewSelect(config.Models, nil)
 	apiKeyEntry := widget.NewPasswordEntry()
 	systemPromptEntry := widget.NewMultiLineEntry()
 
@@ -119,7 +121,7 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 	openIntervalEntry.SetText(strconv.Itoa(cfg.OpenIntervalMs))
 	closeKeySelect.SetSelected(cfg.CloseKey)
 	closeIntervalEntry.SetText(strconv.Itoa(cfg.CloseIntervalMs))
-	modelEntry.SetText(cfg.Model)
+	modelSelect.SetSelected(cfg.Model)
 	apiKeyEntry.SetText(cfg.APIKey)
 	systemPromptEntry.SetText(cfg.SystemPrompt)
 
@@ -127,7 +129,7 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 		&widget.FormItem{Text: getTr("theme"), Widget: themeRadio},
 		&widget.FormItem{Text: getTr("language"), Widget: langRadio},
 		&widget.FormItem{Text: "", Widget: widget.NewSeparator()},
-		&widget.FormItem{Text: getTr("model"), Widget: modelEntry},
+		&widget.FormItem{Text: getTr("model"), Widget: modelSelect},
 		&widget.FormItem{Text: getTr("api_key"), Widget: apiKeyEntry},
 		&widget.FormItem{Text: getTr("system_prompt"), Widget: systemPromptEntry},
 		&widget.FormItem{Text: "", Widget: widget.NewSeparator()},
@@ -161,7 +163,7 @@ func showSettingsWindow(a fyne.App, parent fyne.Window) {
 		if interval, err := strconv.Atoi(closeIntervalEntry.Text); err == nil && interval > 0 {
 			newCfg.CloseIntervalMs = interval
 		}
-		newCfg.Model = modelEntry.Text
+		newCfg.Model = modelSelect.Selected
 		newCfg.APIKey = apiKeyEntry.Text
 		newCfg.SystemPrompt = systemPromptEntry.Text
 

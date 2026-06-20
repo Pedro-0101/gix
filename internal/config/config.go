@@ -7,8 +7,24 @@ import (
 	"strings"
 )
 
-// DefaultModel é um modelo barato do OpenRouter que consome créditos.
-const DefaultModel = "google/gemini-2.0-flash-lite-001"
+// DefaultModel é o modelo padrão do sistema.
+const DefaultModel = "google/gemini-2.5-flash-lite"
+
+// Models é a lista fixa de modelos disponíveis para o usuário escolher.
+var Models = []string{
+	"google/gemini-2.5-flash-lite",
+	"google/gemini-2.5-flash",
+	"google/gemini-2.5-pro",
+	"openai/gpt-4o",
+	"openai/gpt-4o-mini",
+	"openai/o3-mini",
+	"anthropic/claude-sonnet-4-20250514",
+	"anthropic/claude-3.5-haiku",
+	"deepseek/deepseek-chat",
+	"deepseek/deepseek-r1",
+	"meta-llama/llama-3.3-70b-instruct",
+	"mistral/mistral-large",
+}
 
 type Config struct {
 	Theme           string `json:"theme"`
@@ -84,7 +100,7 @@ func Load() *Config {
 	if loaded.CloseIntervalMs <= 0 {
 		loaded.CloseIntervalMs = cfg.CloseIntervalMs
 	}
-	if loaded.Model == "" {
+	if loaded.Model == "" || !isValidModel(loaded.Model) {
 		loaded.Model = cfg.Model
 	}
 	if loaded.SystemPrompt == "" {
@@ -92,6 +108,15 @@ func Load() *Config {
 	}
 	// APIKey vazio é válido: cai para a variável de ambiente em ResolveAPIKey.
 	return &loaded
+}
+
+func isValidModel(model string) bool {
+	for _, m := range Models {
+		if m == model {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) Save() error {

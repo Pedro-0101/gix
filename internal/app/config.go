@@ -46,7 +46,8 @@ func (s *ConfigService) Save(c config.Config) error {
 	cbs := append([]func(*config.Config){}, s.onSave...)
 	s.mu.Unlock()
 	for _, fn := range cbs {
-		fn(&c)
+		cp := c
+		fn(&cp)
 	}
 	return nil
 }

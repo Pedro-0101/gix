@@ -18,7 +18,7 @@ export function HistoryView({ lang, onClose }: { lang: string; onClose: () => vo
         {convs.map((c) => (
           <div key={c.ID} className="flex items-center justify-between px-3 py-2 hover:bg-surface cursor-pointer">
             <span className="truncate" onClick={() => HistoryService.Messages(c.ID).then((m) => setDetail(m ?? []))}>{c.Title}</span>
-            <button className="text-danger" onClick={() => HistoryService.Delete(c.ID).then(reload)}>✕</button>
+            <button className="text-danger" onClick={() => HistoryService.Delete(c.ID).then(() => { setDetail([]); reload() })}>✕</button>
           </div>
         ))}
       </div>

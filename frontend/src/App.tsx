@@ -12,7 +12,7 @@ export default function App() {
   const [lang, setLang] = useState('pt')
   const [theme, setTheme] = useState('light')
 
-  const loadCfg = () => ConfigService.Get().then((c: any) => { setLang(c.language); setTheme(c.theme) })
+  const loadCfg = () => ConfigService.Get().then((c: any) => { setLang(c.language); setTheme(c.theme) }).catch(() => {})
   useEffect(() => { loadCfg() }, [])
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
 

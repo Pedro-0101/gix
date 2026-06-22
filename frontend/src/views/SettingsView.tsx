@@ -17,12 +17,8 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
   const set = (k: string, v: any) => setCfg({ ...cfg, [k]: v })
 
   const save = async () => {
-    const toSave = {
-      ...cfg,
-      open_interval_ms: Number(cfg.open_interval_ms) || cfg.open_interval_ms,
-      close_interval_ms: Number(cfg.close_interval_ms) || cfg.close_interval_ms,
-    }
-    await ConfigService.Save(toSave)
+    // os campos de intervalo já são coeridos a número nos onChange
+    await ConfigService.Save(cfg)
     onClose()
   }
 

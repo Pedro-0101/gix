@@ -85,3 +85,61 @@ func TestChatServiceSendEmitsSequence(t *testing.T) {
 		t.Fatalf("esperava 1 conversa persistida, veio %d", len(convs))
 	}
 }
+
+type blockingStreamer struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingStreamer) Stream(ctx context.Context, model string, msgs []ai.Message, onDelta func(string)) (*ai.Usage, error) {
+	close(b.entered)
+	<-b.release
+	return &ai.Usage{}, nil
+}
+
+func TestChatServiceSecondSendWhileStreamingIsNoop(t *testing.T) {
+	t.Setenv("AppData", t.TempDir())
+	d, err := db.Open(filepath.Join(t.TempDir(), "c2.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+
+	emit := func(name string, data any) {}
+
+	cfgSvc := NewConfigService()
+	cur := cfgSvc.Current()
+	cur.APIKey = "k"
+	_ = cfgSvc.Save(*cur)
+
+	bs := &blockingStreamer{entered: make(chan struct{}), release: make(chan struct{})}
+	s := NewChatService(cfgSvc, d, emit, func(string) Streamer { return bs })
+
+	s.Send("primeira")
+	<-bs.entered // first stream is now in-flight; streaming == true
+
+	s.Send("segunda") // must be a no-op
+
+	convs, _ := d.ListConversations()
+	if len(convs) != 1 {
+		t.Fatalf("esperava 1 conversa enquanto streaming, veio %d", len(convs))
+	}
+
+	close(bs.release) // let the first stream finish and persist
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		msgs, _ := d.GetMessages(convs[0].ID)
+		if len(msgs) >= 2 { // user + assistant persisted => goroutine done
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	msgs, _ := d.GetMessages(convs[0].ID)
+	for _, m := range msgs {
+		if m.Content == "segunda" {
+			t.Fatal("a segunda mensagem nao deveria ter sido persistida")
+		}
+	}
+}

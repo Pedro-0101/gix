@@ -70,13 +70,6 @@ func (s *ChatService) Send(text string) {
 		return
 	}
 
-	s.mu.Lock()
-	if s.streaming {
-		s.mu.Unlock()
-		return
-	}
-	s.mu.Unlock()
-
 	cfg := s.cfg.Current()
 	apiKey := cfg.ResolveAPIKey()
 	if apiKey == "" {
@@ -85,6 +78,11 @@ func (s *ChatService) Send(text string) {
 	}
 
 	s.mu.Lock()
+	if s.streaming {
+		s.mu.Unlock()
+		return
+	}
+	s.streaming = true
 	if s.convID == 0 && s.db != nil {
 		if id, err := s.db.CreateConversation(db.ExtractTitle(text), cfg.Model); err == nil {
 			s.convID = id
@@ -97,7 +95,6 @@ func (s *ChatService) Send(text string) {
 		msgs = append(msgs, ai.Message{Role: "system", Content: cfg.SystemPrompt})
 	}
 	msgs = append(msgs, s.history...)
-	s.streaming = true
 	gen := s.gen
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel

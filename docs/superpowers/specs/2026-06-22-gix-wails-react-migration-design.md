@@ -93,9 +93,9 @@ Três serviços expõem o núcleo Go ao frontend via bindings do Wails:
 
 ## Frontend — React de janela única, com views
 
-Em vez de janelas OS separadas (o Fyne abria janelas distintas pra settings e
-history), tudo vira **views dentro de uma única janela** — mais fácil de estilizar
-e mais coerente com um overlay.
+Tudo vira **views dentro de uma única janela** (decisão travada), substituindo as
+janelas OS separadas que o Fyne abria pra settings e history — mais fácil de
+estilizar e mais coerente com um overlay.
 
 - **Chat** (view padrão): input multiline + lista de mensagens. Escuta `chat:delta`,
   acumula e renderiza **markdown incremental** com `react-markdown`. Exibe
@@ -113,9 +113,12 @@ e mais coerente com um overlay.
 - Animações de entrada de card e fade da janela via CSS/Framer Motion.
 - Gradientes, sombras e markdown rico: destravados pelo uso de HTML/CSS.
 
-**Decisão de estilização:** CSS variables como tokens é a base obrigatória.
-Tailwind v4 por cima é opcional (velocidade vs. dependência de build) e pode ser
-reavaliado na revisão do spec ou no início do plano.
+**Decisão de estilização (travada):** **Tailwind v4** configurado sobre **design
+tokens em CSS variables**. Regra de ouro: nenhum componente usa cor/raio/espaçamento
+literal — tudo referencia um token (`bg-surface`, `text-fg`, `rounded-card` etc.)
+mapeado para uma CSS variable. Isso padroniza o visual e deixa **temas** prontos
+para entrar trocando apenas o conjunto de variáveis (ex.: `[data-theme="dark"]`).
+O `Config.Theme` (hoje light/dark) passa a selecionar o conjunto de tokens ativo.
 
 ## Janela, tray e hotkey
 

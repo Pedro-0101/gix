@@ -29,3 +29,14 @@ Thumbs.db
 
 node_modules/
 .env
+
+# Wails / frontend
+.task
+bin/
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/node_modules
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+
+# Superpowers scratch
+.superpowers/

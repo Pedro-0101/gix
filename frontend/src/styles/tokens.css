@@ -12,6 +12,7 @@
   --color-fg: #18181b;
   --color-muted: #6b7280;
   --color-accent: #2563eb;
+  --color-danger: #dc2626;
 }
 
 [data-theme="dark"] {
@@ -21,6 +22,7 @@
   --color-fg: #fafafa;
   --color-muted: #a1a1aa;
   --color-accent: #60a5fa;
+  --color-danger: #f87171;
 }
 
 @theme inline {
@@ -30,4 +32,5 @@
   --color-fg: var(--color-fg);
   --color-muted: var(--color-muted);
   --color-accent: var(--color-accent);
+  --color-danger: var(--color-danger);
 }

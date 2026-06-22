@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { HistoryService } from '../../bindings/gix/internal/app'
 import { MessageCard } from '../components/MessageCard'
+import { tr } from '../i18n'
 
-export function HistoryView({ onClose }: { onClose: () => void }) {
+export function HistoryView({ lang, onClose }: { lang: string; onClose: () => void }) {
   const [convs, setConvs] = useState<any[]>([])
   const [detail, setDetail] = useState<any[]>([])
 
@@ -17,14 +18,14 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
         {convs.map((c) => (
           <div key={c.ID} className="flex items-center justify-between px-3 py-2 hover:bg-surface cursor-pointer">
             <span className="truncate" onClick={() => HistoryService.Messages(c.ID).then((m) => setDetail(m ?? []))}>{c.Title}</span>
-            <button className="text-red-500" onClick={() => HistoryService.Delete(c.ID).then(reload)}>✕</button>
+            <button className="text-danger" onClick={() => HistoryService.Delete(c.ID).then(reload)}>✕</button>
           </div>
         ))}
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {detail.map((m, i) => (
           <MessageCard key={i} role={m.Role === 'user' ? 'user' : 'assistant'} content={m.Content}
-            label={m.Role === 'user' ? 'Você' : 'IA'} />
+            label={m.Role === 'user' ? tr(lang, 'you') : tr(lang, 'ai')} />
         ))}
       </div>
     </div>

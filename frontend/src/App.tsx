@@ -41,7 +41,7 @@ export default function App() {
       <div className="h-[calc(100%-2rem)]">
         {view === 'chat' && <ChatView lang={lang} />}
         {view === 'settings' && <SettingsView onClose={() => { loadCfg(); setView('chat') }} />}
-        {view === 'history' && <HistoryView onClose={() => setView('chat')} />}
+        {view === 'history' && <HistoryView lang={lang} onClose={() => setView('chat')} />}
       </div>
     </div>
   )

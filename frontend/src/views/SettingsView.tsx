@@ -9,7 +9,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     ConfigService.Get().then(setCfg)
-    ConfigService.Models().then(setModels)
+    ConfigService.Models().then((m) => setModels(m ?? []))
   }, [])
 
   if (!cfg) return null

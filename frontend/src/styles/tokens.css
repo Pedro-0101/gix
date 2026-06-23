@@ -2,7 +2,10 @@
 
 @theme {
   --font-mono: Consolas, "Courier New", monospace;
+  /* Concentric radius scale: outer = inner + padding. */
+  --radius-field: 10px;
   --radius-card: 12px;
+  --radius-shell: 16px;
 }
 
 :root, [data-theme="light"] {
@@ -13,6 +16,27 @@
   --color-muted: #6b7280;
   --color-accent: #2563eb;
   --color-danger: #dc2626;
+
+  /* Layered shadow-as-border: 1px ring + lift + ambient depth. */
+  --shadow-border:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 1px 2px -1px rgba(0, 0, 0, 0.06),
+    0 2px 4px 0 rgba(0, 0, 0, 0.04);
+  --shadow-border-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 1px 2px -1px rgba(0, 0, 0, 0.08),
+    0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-pop:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 8px 24px -6px rgba(0, 0, 0, 0.18);
+  --ring-focus: rgba(37, 99, 235, 0.45);
+
+  /* Translucent command-palette surface with backdrop blur effect.
+     Opacity is now applied dynamically via inline styles in App.tsx. */
+  --shell-border: rgba(0, 0, 0, 0.08);
+  --shell-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 18px 48px -12px rgba(0, 0, 0, 0.32);
 }
 
 [data-theme="dark"] {
@@ -23,6 +47,20 @@
   --color-muted: #a1a1aa;
   --color-accent: #60a5fa;
   --color-danger: #f87171;
+
+  /* On dark backgrounds, layered depth isn't visible — use a single white ring. */
+  --shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
+  --shadow-pop:
+    0 0 0 1px rgba(255, 255, 255, 0.10),
+    0 8px 28px -6px rgba(0, 0, 0, 0.55);
+  --ring-focus: rgba(96, 165, 250, 0.55);
+
+  /* Dark mode with backdrop blur. */
+  --shell-border: rgba(255, 255, 255, 0.10);
+  --shell-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 18px 48px -12px rgba(0, 0, 0, 0.6);
 }
 
 @theme inline {

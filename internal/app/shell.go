@@ -46,21 +46,43 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		},
 	})
 
+	// Command-palette dimensions. The window opens collapsed (just the input
+	// bar) at the top-centre of the screen; the frontend grows the height as
+	// answers stream in, anchored to this top edge so it expands downward.
+	const (
+		paletteWidth    = 680
+		collapsedHeight = 64
+		topOffset       = 120
+	)
+
 	mainWin := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:         "gix",
-		Width:         640,
-		Height:        480,
-		Frameless:     true,
-		AlwaysOnTop:   true,
-		Hidden:        true,
-		DisableResize: true,
-		URL:           "/",
+		Title:       "gix",
+		Width:       paletteWidth,
+		Height:      collapsedHeight,
+		Frameless:   true,
+		AlwaysOnTop: true,
+		Hidden:      true,
+		DisableResize: false,
+		BackgroundType: application.BackgroundTypeTranslucent,
+		URL:         "/",
+		Windows: application.WindowsWindow{
+			BackdropType: application.Mica,
+		},
 	})
 
+	// Show the palette collapsed and pinned to the top-centre of the active
+	// screen, then let the frontend reset/focus via the window:shown event.
 	showMain := func() {
+		mainWin.SetSize(paletteWidth, collapsedHeight)
+		if s, err := mainWin.GetScreen(); err == nil && s != nil {
+			wa := s.WorkArea
+			mainWin.SetPosition(wa.X+(wa.Width-paletteWidth)/2, wa.Y+topOffset)
+		} else {
+			mainWin.Center()
+		}
 		mainWin.Show()
-		mainWin.Center()
 		mainWin.Focus()
+		emit("window:shown", nil)
 	}
 
 	// Closing the window hides it (and cancels any in-flight stream) instead of quitting.

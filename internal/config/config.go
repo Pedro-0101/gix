@@ -22,18 +22,18 @@ func (p ModelPricing) CalculateCost(promptTokens, completionTokens int) float64 
 
 // ModelPrices mapeia cada modelo ao seu custo por 1M tokens (USD) no OpenRouter.
 var ModelPrices = map[string]ModelPricing{
-	"google/gemini-2.5-flash-lite":          {0.075, 0.30},
-	"google/gemini-2.5-flash":               {0.10, 0.40},
-	"google/gemini-2.5-pro":                 {1.25, 5.00},
-	"openai/gpt-4o":                         {2.50, 10.00},
-	"openai/gpt-4o-mini":                    {0.15, 0.60},
-	"openai/o3-mini":                        {1.10, 4.40},
-	"anthropic/claude-sonnet-4-20250514":    {3.00, 15.00},
-	"anthropic/claude-3.5-haiku":            {0.80, 4.00},
-	"deepseek/deepseek-chat":                {0.27, 1.10},
-	"deepseek/deepseek-r1":                  {0.55, 2.19},
-	"meta-llama/llama-3.3-70b-instruct":     {0.25, 0.25},
-	"mistral/mistral-large":                 {2.00, 6.00},
+	"google/gemini-2.5-flash-lite":       {0.075, 0.30},
+	"google/gemini-2.5-flash":            {0.10, 0.40},
+	"google/gemini-2.5-pro":              {1.25, 5.00},
+	"openai/gpt-4o":                      {2.50, 10.00},
+	"openai/gpt-4o-mini":                 {0.15, 0.60},
+	"openai/o3-mini":                     {1.10, 4.40},
+	"anthropic/claude-sonnet-4-20250514": {3.00, 15.00},
+	"anthropic/claude-3.5-haiku":         {0.80, 4.00},
+	"deepseek/deepseek-chat":             {0.27, 1.10},
+	"deepseek/deepseek-r1":               {0.55, 2.19},
+	"meta-llama/llama-3.3-70b-instruct":  {0.25, 0.25},
+	"mistral/mistral-large":              {2.00, 6.00},
 }
 
 // DefaultModel é o modelo padrão do sistema.
@@ -65,6 +65,9 @@ type Config struct {
 	Model           string `json:"model"`
 	APIKey          string `json:"api_key"`
 	SystemPrompt    string `json:"system_prompt"`
+	// Opacity is the background opacity of the palette shell, 0–100 (percent).
+	// Higher is more opaque; the remainder lets the acrylic backdrop show through.
+	Opacity int `json:"opacity"`
 }
 
 func Default() *Config {
@@ -78,6 +81,7 @@ func Default() *Config {
 		Model:           DefaultModel,
 		APIKey:          "",
 		SystemPrompt:    "Responda de forma direta e objetiva.",
+		Opacity:         85,
 	}
 }
 
@@ -134,6 +138,12 @@ func Load() *Config {
 	}
 	if loaded.SystemPrompt == "" {
 		loaded.SystemPrompt = cfg.SystemPrompt
+	}
+	if loaded.Opacity <= 0 {
+		loaded.Opacity = cfg.Opacity
+	}
+	if loaded.Opacity > 100 {
+		loaded.Opacity = 100
 	}
 	// APIKey vazio é válido: cai para a variável de ambiente em ResolveAPIKey.
 	return &loaded

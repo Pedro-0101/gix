@@ -11,4 +11,10 @@ export interface Config {
     "model": string;
     "api_key": string;
     "system_prompt": string;
+
+    /**
+     * Opacity is the background opacity of the palette shell, 0–100 (percent).
+     * Higher is more opaque; the remainder lets the acrylic backdrop show through.
+     */
+    "opacity": number;
 }

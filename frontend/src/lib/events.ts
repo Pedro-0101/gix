@@ -14,3 +14,7 @@ export const onChatDone = (cb: (d: DonePayload) => void) =>
 
 export const onChatError = (cb: (msg: string) => void) =>
   Events.On('chat:error', (e) => cb(e.data as string))
+
+// Fired by Go each time the window is shown via hotkey/tray — reset to the bar.
+export const onWindowShown = (cb: () => void) =>
+  Events.On('window:shown', () => cb())

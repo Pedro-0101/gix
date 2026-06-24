@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wails from "@wailsio/runtime/plugins/vite";
@@ -5,6 +6,11 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Pure command logic has no DOM dependency, so the default 'node' environment
+  // is enough — no jsdom needed.
+  test: {
+    include: ["src/**/*.test.ts"],
+  },
   server: {
     // Wails' asset proxy dials IPv4 `tcp4 127.0.0.1:<port>`, so bind Vite to
     // 127.0.0.1 (not "localhost", which on Windows binds IPv6 ::1 only and makes

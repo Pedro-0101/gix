@@ -12,7 +12,6 @@ features
 - Adicionar área para comunicação do sistema com usuário
 - Adicionar interações com o sistema operacional
 - Iniciar sistema de organização de notas(ideia inicial core buisness)
-- Adicionar test runner no frontend (vitest) e testar a lógica pura de comandos (resolveCommand, geração do /help)
 
 
 fixes

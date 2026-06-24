@@ -11,6 +11,10 @@ pre-commit:
       run: go vet ./...
     go-test:
       run: go test ./... -count=1 -timeout=30s
+    frontend-test:
+      root: "frontend/"
+      glob: "frontend/**/*"
+      run: npm run test:run
 
 pre-push:
   commands:

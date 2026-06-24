@@ -12,7 +12,11 @@ features
 - Adicionar área para comunicação do sistema com usuário
 - Adicionar interações com o sistema operacional
 - Iniciar sistema de organização de notas(ideia inicial core buisness)
+- Fazer mecanica para letras e palavras aparecerem aos poucos suavemente de forma continua
+- Fazer componente slider que desliza com as teclas de direita e esquerda reutilizavel no sistema para configuracao de campos numericos
 
 
 fixes
-Retirar corretor de texto na barra de texto
+- Retirar corretor de texto na barra de texto
+- Ao mudar linguagem, ele deveria alterar todos os textos do menu de configuração ao mesmo tempo
+- melhorar modo acrilico, esta muito escuro

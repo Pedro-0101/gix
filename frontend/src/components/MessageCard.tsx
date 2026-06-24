@@ -1,8 +1,9 @@
 import { motion } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
+import { softenMarkdown } from '../lib/softenMarkdown'
 
-export function MessageCard({ role, content, label, pending }:
-  { role: 'user' | 'assistant' | 'system'; content: string; label: string; pending?: boolean }) {
+export function MessageCard({ role, content, label, pending, revealing }:
+  { role: 'user' | 'assistant' | 'system'; content: string; label: string; pending?: boolean; revealing?: boolean }) {
   const isUser = role === 'user'
   const isSystem = role === 'system'
   return (
@@ -29,7 +30,7 @@ export function MessageCard({ role, content, label, pending }:
               : isUser
                 ? 'max-w-[78%] rounded-tr-sm bg-accent text-white'
                 : 'max-w-[78%] rounded-tl-sm bg-bubble text-fg'
-          }`
+          } ${revealing ? 'reveal-mask' : ''}`
         }
       >
         {pending ? (
@@ -42,7 +43,7 @@ export function MessageCard({ role, content, label, pending }:
             </span>
           </span>
         ) : (
-          <ReactMarkdown>{content}</ReactMarkdown>
+          <ReactMarkdown>{revealing ? softenMarkdown(content) : content}</ReactMarkdown>
         )}
       </div>
     </motion.div>

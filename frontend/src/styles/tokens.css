@@ -81,3 +81,9 @@
   --color-accent: var(--color-accent);
   --color-danger: var(--color-danger);
 }
+
+/* Fade na borda inferior enquanto o texto é revelado no streaming. */
+.reveal-mask {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.1em), transparent);
+          mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.1em), transparent);
+}

@@ -22,7 +22,9 @@
 
 ### `frontend/src/lib/softenMarkdown.ts`
 
-- `softenMarkdown(prefix: string): string` — função pura que esconde marcadores inline ainda não fechados antes de passar ao `ReactMarkdown`. Cobre: `**`, `__`, `*`, `_`, `` ` ``, `~~` e link parcial (`[texto](url` sem `)` de fechamento). Para o fence de código (` ``` `): quando há um fence aberto sem o de fechamento, esconde a linha de abertura ainda incompleta (sem conteúdo/linguagem após ela) para não mostrar os três crases soltos; um fence já com conteúdo permanece (o `ReactMarkdown` renderiza como bloco de código em progresso, o que é aceitável). Marcadores completos passam intactos.
+- `softenMarkdown(prefix: string): string` — função pura que esconde marcadores inline ainda não fechados antes de passar ao `ReactMarkdown`. Cobre: `**`, `__`, `~~`, `` ` `` (inline) e link parcial (`[texto](url` sem `)` de fechamento). Marcadores completos passam intactos.
+
+  **Fora de escopo no softener:** ênfase de um caractere (`*`, `_`) é deixada literal de propósito — escondê-la quebraria listas com marcador (`* item`) e underscores no meio de palavras durante o stream. O flicker de itálico parcial é raro e menos incômodo que regredir esses casos. Fence de bloco (` ``` `) também fica literal: o `ReactMarkdown` renderiza um fence aberto como bloco de código em progresso, o que é aceitável.
 
 ### `frontend/src/components/MessageCard.tsx` (modificado)
 
@@ -101,9 +103,9 @@ Seguindo o estilo dos `.test.ts` existentes (`highlight.test.ts`, `promptHistory
   - nunca ultrapassa `targetLen`.
 - **`frontend/src/lib/softenMarkdown.test.ts`** → tabela:
   - `**` solto → escondido; `**bold**` completo → intacto;
-  - `*`, `_`, `__`, `` ` ``, `~~` não-fechados → escondidos;
-  - link parcial `[x](url` → escondido até fechar `)`;
-  - fence ` ``` ` ainda aberto → tratado;
+  - `__`, `~~`, `` ` `` não-fechados → escondidos;
+  - link parcial `[x](url` → exibe só o texto `x` até fechar `)`; link completo `[x](url)` → intacto;
+  - ênfase de um caractere (`*`, `_`) e listas com marcador → inalteradas;
   - texto sem marcadores → inalterado.
 
 ## Arquivos

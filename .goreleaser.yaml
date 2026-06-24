@@ -1,0 +1,77 @@
+# GoReleaser config for gix — a Wails v3 desktop app.
+#
+# Wails apps can't be built by GoReleaser's default `go build`: the binary needs
+# the frontend embedded and is produced by `wails3 build` (which compiles the
+# React app, generates bindings, and embeds the icon/manifest). So we let Wails
+# build the binary and use GoReleaser only to package it, generate a changelog,
+# checksums, and publish the GitHub release.
+#
+# The `prebuilt` builder consumes the binary Wails already produced in ./bin
+# instead of compiling. GoReleaser runs per-OS (one CI runner per platform),
+# because cross-compiling a native GUI app from one host isn't practical. This
+# config targets windows/amd64 (the primary target); add darwin/linux entries
+# plus their CI runners when you ship those.
+#
+# Validate with:  goreleaser check
+# Dry-run with:   goreleaser release --snapshot --clean
+version: 2
+
+project_name: gix
+
+# Build the Wails binary before packaging. On a Windows runner this produces
+# bin/gix.exe; the prebuilt builder below picks it up.
+before:
+  hooks:
+    - wails3 task build
+
+# Wails builds the binary (see `before.hooks`), so GoReleaser does not compile.
+builds:
+  - id: gix
+    skip: true
+
+# `meta` archives pack arbitrary files (the Wails-built binary) without being
+# tied to a GoReleaser build. One archive per OS runner.
+archives:
+  - id: gix
+    meta: true
+    formats:
+      - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_windows_amd64"
+    files:
+      - src: bin/gix.exe
+        strip_parent: true
+        info:
+          mode: 0755
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^style:"
+      - "merge conflict"
+  groups:
+    - title: "Novidades"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: "Correções"
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: "Outros"
+      order: 999
+
+release:
+  github:
+    owner: Pedro-0101
+    name: gix
+  draft: false
+  prerelease: auto
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"

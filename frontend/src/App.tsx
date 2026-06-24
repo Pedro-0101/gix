@@ -14,9 +14,10 @@ import { analyzeBar } from './commands/highlight'
 import { moveSelection, type Interaction } from './commands/interaction'
 import { emptyHistory, record as recordPrompt, prev as prevPrompt, next as nextPrompt, detach as detachPrompt, type PromptHistory } from './commands/promptHistory'
 import { tr } from './i18n'
+import { useReveal } from './lib/reveal'
 
 type View = 'chat' | 'settings' | 'history'
-type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean }
+type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean; instant?: boolean }
 type ChoiceMsg = { role: 'choice'; title: string; chosenLabel: string }
 type Msg = ChatMsg | ChoiceMsg
 
@@ -47,6 +48,7 @@ export default function App() {
   const [usage, setUsage] = useState<{ tokens: number; cost: number } | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [nonce, setNonce] = useState(0) // bumped on every window show to replay the enter animation
+  const [revealKey, setRevealKey] = useState(0)
   // The active interaction (options card or input prompt), or null. Its promise
   // resolver and the prompt validator live in refs (they don't affect render).
   const [interaction, setInteraction] = useState<Interaction | null>(null)
@@ -137,7 +139,7 @@ export default function App() {
         const i = copy.length - 1
         const last = copy[i]
         const text = code === 'no_api_key' ? tr(lang, 'no_api_key') : `${tr(lang, 'error_prefix')}${code}`
-        if (last && last.role === 'assistant') copy[i] = { ...last, content: text, pending: false }
+        if (last && last.role === 'assistant') copy[i] = { ...last, content: text, pending: false, instant: true }
         return copy
       })
     })
@@ -158,7 +160,14 @@ export default function App() {
     return () => { off() }
   }, [])
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  // A última mensagem do assistente (não pendente, não-erro) é a que revela ao vivo.
+  const lastIdx = msgs.length - 1
+  const lastMsg = msgs[lastIdx]
+  const activeTarget =
+    lastMsg && lastMsg.role === 'assistant' && !lastMsg.pending && !lastMsg.instant ? lastMsg.content : ''
+  const { shown, revealing } = useReveal(activeTarget, { done: !streaming, resetKey: revealKey })
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, shown])
 
   // Auto-grow the input up to ~5 lines.
   useEffect(() => {
@@ -306,6 +315,7 @@ export default function App() {
     if (cmd) { cmd.run(commandContext); setInput(''); return }
     setView('chat')
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '', pending: true }])
+    setRevealKey((k) => k + 1)
     setStreaming(true)
     ChatService.Send(text)
     setInput('')
@@ -443,8 +453,15 @@ export default function App() {
                 <ChoiceSummary key={i} title={m.title} chosenLabel={m.chosenLabel} />
               ) : (
                 <MessageCard key={i} role={m.role}
-                  content={m.pending ? tr(lang, 'thinking') : m.content}
+                  content={
+                    m.pending
+                      ? tr(lang, 'thinking')
+                      : i === lastIdx && m.role === 'assistant' && !m.instant
+                        ? m.content.slice(0, shown)
+                        : m.content
+                  }
                   pending={m.pending}
+                  revealing={i === lastIdx && m.role === 'assistant' && !m.pending && !m.instant && revealing}
                   label={m.role === 'user' ? tr(lang, 'you') : m.role === 'system' ? tr(lang, 'system') : tr(lang, 'ai')} />
               ))}
               {interaction?.kind === 'choose' && (

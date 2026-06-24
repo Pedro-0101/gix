@@ -187,7 +187,7 @@ export default function App() {
     choose: (req) => new Promise<string | null>((resolve) => {
       resolverRef.current = resolve
       setView('chat')
-      setInteraction({ kind: 'choose', title: req.title, choices: req.choices, selected: 0 })
+      setInteraction({ kind: 'choose', title: req.title, choices: req.choices, selected: 0, silent: req.silent })
     }),
     prompt: (req) => new Promise<string | null>((resolve) => {
       resolverRef.current = resolve
@@ -214,7 +214,9 @@ export default function App() {
     if (!choice) return
     const resolve = resolverRef.current
     resolverRef.current = null
-    setMsgs((m) => [...m, { role: 'choice', title: interaction.title, chosenLabel: choice.label }])
+    if (!interaction.silent) {
+      setMsgs((m) => [...m, { role: 'choice', title: interaction.title, chosenLabel: choice.label }])
+    }
     setInteraction(null)
     resolve?.(choice.value)
   }

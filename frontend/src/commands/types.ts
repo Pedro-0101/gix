@@ -18,8 +18,9 @@ export interface CommandContext {
   getCommands(): Command[]
 
   // Interaction primitive: emits an options card and resolves with the chosen
-  // value, or null if the user cancels (Esc).
-  choose(req: { title: string; choices: Choice[] }): Promise<string | null>
+  // value, or null if the user cancels (Esc). `silent` cards leave no inert
+  // record in the conversation (use for navigation menus).
+  choose(req: { title: string; choices: Choice[]; silent?: boolean }): Promise<string | null>
   // Puts the bar into input mode; resolves with the typed value once it passes
   // `validate` (which returns an i18n error key or null), or null on cancel.
   prompt(req: { title: string; placeholder?: string; validate?: (v: string) => string | null }): Promise<string | null>

@@ -63,10 +63,14 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		AlwaysOnTop: true,
 		Hidden:      true,
 		DisableResize: false,
+		// Frosted-glass overlay: the OS composites an Acrylic backdrop behind the
+		// window and the web content paints transparently on top (no CSS shell
+		// background). Acrylic is the reliable native translucency path on Windows;
+		// BackgroundTypeTransparent renders opaque white on this WebView2/Wails build.
 		BackgroundType: application.BackgroundTypeTranslucent,
 		URL:         "/",
 		Windows: application.WindowsWindow{
-			BackdropType: application.Mica,
+			BackdropType: application.Acrylic,
 		},
 	})
 

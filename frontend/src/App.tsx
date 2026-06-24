@@ -19,7 +19,6 @@ export default function App() {
   const [view, setView] = useState<View>('chat')
   const [lang, setLang] = useState('pt')
   const [theme, setTheme] = useState('light')
-  const [opacity, setOpacity] = useState(85)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [usage, setUsage] = useState<{ tokens: number; cost: number } | null>(null)
@@ -37,9 +36,6 @@ export default function App() {
 
   const loadCfg = () => ConfigService.Get().then((c: any) => {
     setLang(c.language); setTheme(c.theme)
-    if (typeof c.opacity === 'number') {
-      setOpacity(c.opacity)
-    }
   }).catch(() => {})
   useEffect(() => { loadCfg() }, [])
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
@@ -172,7 +168,6 @@ export default function App() {
       className="flex flex-col overflow-hidden rounded-xl text-fg"
       style={{
         maxHeight: maxH,
-        background: `rgba(${theme === 'dark' ? '0,0,0' : '255,255,255'} / ${opacity / 100 * 0.3})`,
         boxShadow: 'var(--shell-shadow)'
       }}
     >

@@ -63,25 +63,6 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
           </select>
         </Row>
 
-        <Row label={tr(lang, 'opacity')} i={2}>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={20}
-              max={100}
-              value={cfg.opacity ?? 85}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10)
-                set('opacity', n)
-                // Live preview: apply the alpha immediately while dragging.
-                document.documentElement.style.setProperty('--shell-alpha', String(Math.min(100, Math.max(20, n)) / 100))
-              }}
-              className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-fg/15 accent-accent outline-none"
-            />
-            <span className="w-10 text-right text-sm tabular-nums text-muted">{cfg.opacity ?? 85}%</span>
-          </div>
-        </Row>
-
         <Row label={tr(lang, 'language')} i={2}>
           <select className={field} value={cfg.language} onChange={(e) => set('language', e.target.value)}>
             <option value="pt">{tr(lang, 'portuguese')}</option>
@@ -162,7 +143,7 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
         </motion.label>
       </div>
 
-      <div className="sticky bottom-0 flex gap-2 border-t border-[color:var(--shell-border)] p-3 [background:var(--shell-bg)] [-webkit-backdrop-filter:blur(8px)] [backdrop-filter:blur(8px)]">
+      <div className="sticky bottom-0 flex gap-2 border-t border-[color:var(--shell-border)] p-3">
         <Button variant="accent" onClick={save}>{tr(lang, 'save')}</Button>
         <Button variant="surface" onClick={onClose}>{tr(lang, 'cancel')}</Button>
       </div>

@@ -23,11 +23,17 @@ const pt: Record<string, string> = {
   history_empty: 'Nenhuma conversa salva.',
   you: 'Você',
   ai: 'IA',
+  system: 'Sistema',
   thinking: 'pensando…',
   no_api_key: 'Configure a chave do OpenRouter nas configurações.',
   error_prefix: 'Erro: ',
   empty_response: '(sem resposta)',
   copy: 'Copiar',
+  cmd_help_title: 'Comandos disponíveis:',
+  cmd_help_desc: 'Lista os comandos disponíveis',
+  cmd_new_desc: 'Inicia uma nova conversa',
+  cmd_config_desc: 'Abre as configurações',
+  cmd_history_desc: 'Abre o histórico de conversas',
 }
 
 const en: Record<string, string> = {
@@ -55,11 +61,17 @@ const en: Record<string, string> = {
   history_empty: 'No saved conversations.',
   you: 'You',
   ai: 'AI',
+  system: 'System',
   thinking: 'thinking…',
   no_api_key: 'Set your OpenRouter key in settings.',
   error_prefix: 'Error: ',
   empty_response: '(no response)',
   copy: 'Copy',
+  cmd_help_title: 'Available commands:',
+  cmd_help_desc: 'Lists the available commands',
+  cmd_new_desc: 'Starts a new conversation',
+  cmd_config_desc: 'Opens settings',
+  cmd_history_desc: 'Opens conversation history',
 }
 
 export function tr(lang: string, key: string): string {

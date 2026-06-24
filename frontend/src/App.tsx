@@ -6,10 +6,11 @@ import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown } from
 import { MessageCard } from './components/MessageCard'
 import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
+import { commands, resolveCommand, type CommandContext } from './commands/registry'
 import { tr } from './i18n'
 
 type View = 'chat' | 'settings' | 'history'
-type Msg = { role: 'user' | 'assistant'; content: string; pending?: boolean }
+type Msg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean }
 
 // Must match the Go side (internal/app/shell.go).
 const WIDTH = 680
@@ -137,15 +138,25 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [view])
 
+  // The capability surface commands act through (see commands/types.ts). Built
+  // here so commands stay decoupled from React internals.
+  const commandContext: CommandContext = {
+    lang,
+    setView,
+    newConversation: () => {
+      ChatService.NewConversation(); setMsgs([]); setUsage(null); setView('chat')
+    },
+    emitSystemMessage: (markdown) => {
+      setView('chat'); setMsgs((m) => [...m, { role: 'system', content: markdown }])
+    },
+    getCommands: () => commands,
+  }
+
   const send = () => {
     const text = input.trim()
     if (!text) return
-    const cmd = text.toLowerCase()
-    if (cmd === '/new' || cmd === '/limpar') {
-      ChatService.NewConversation(); setMsgs([]); setUsage(null); setInput(''); setView('chat'); return
-    }
-    if (cmd === '/config' || cmd === '/configuracoes' || cmd === '/settings') { setView('settings'); setInput(''); return }
-    if (cmd === '/historico' || cmd === '/history') { setView('history'); setInput(''); return }
+    const cmd = resolveCommand(text)
+    if (cmd) { cmd.run(commandContext); setInput(''); return }
     setView('chat')
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '', pending: true }])
     setStreaming(true)
@@ -221,7 +232,7 @@ export default function App() {
                 <MessageCard key={i} role={m.role}
                   content={m.pending ? tr(lang, 'thinking') : m.content}
                   pending={m.pending}
-                  label={m.role === 'user' ? tr(lang, 'you') : tr(lang, 'ai')} />
+                  label={m.role === 'user' ? tr(lang, 'you') : m.role === 'system' ? tr(lang, 'system') : tr(lang, 'ai')} />
               ))}
               <div ref={endRef} />
             </div>

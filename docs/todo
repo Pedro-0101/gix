@@ -1,0 +1,19 @@
+features
+- Transformação de fala em texto ao abrir a barra de pesquisa, cancela se o usuario começa a digitar
+- Anexar arquivos e imagens
+- Anexar screenshots
+- Reconhecimento da tela atual
+- Demarcação de forma explicita dos comandos na barra de texto
+- Apertar seta/baixo pra cima para andar através do histórico de sessões
+- Permitir mudar todas configurações por comandos
+- Adicionar configurações de acrilico do background
+- Fazer pacote instalador para versionamento mais fácil
+- Fazer atualizador remoto(por comando, notificar usuarios)
+- Adicionar área para comunicação do sistema com usuário
+- Adicionar interações com o sistema operacional
+- Iniciar sistema de organização de notas(ideia inicial core buisness)
+- Adicionar test runner no frontend (vitest) e testar a lógica pura de comandos (resolveCommand, geração do /help)
+
+
+fixes
+Retirar corretor de texto na barra de texto

@@ -25,6 +25,7 @@ export default function App() {
   const [view, setView] = useState<View>('chat')
   const [lang, setLang] = useState('pt')
   const [theme, setTheme] = useState('light')
+  const [opacity, setOpacity] = useState(85) // background frost strength, 0–100
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [usage, setUsage] = useState<{ tokens: number; cost: number } | null>(null)
@@ -49,10 +50,17 @@ export default function App() {
   const expanded = view !== 'chat' || msgs.length > 0 || interaction != null
   const maxH = Math.round((window.screen?.availHeight || 900) * TOP_MAX_RATIO)
   const panelMax = Math.max(180, maxH - (barRef.current?.offsetHeight ?? 64))
+  // Frost overlay over the native Acrylic backdrop: a translucent white (light)
+  // or black (dark) layer whose strength follows the Opacity setting. Without it
+  // the raw Acrylic tint reads too dark; users tune it via /config → Opacidade.
+  const shellBg = theme === 'dark'
+    ? `rgba(0, 0, 0, ${(opacity / 100) * 0.3})`
+    : `rgba(255, 255, 255, ${(opacity / 100) * 0.55})`
 
   const loadCfg = () => ConfigService.Get().then((c: any) => {
     langRef.current = c.language // sync now so an awaiting command sees it immediately
     setLang(c.language); setTheme(c.theme)
+    if (typeof c.opacity === 'number') setOpacity(c.opacity)
   }).catch(() => {})
   useEffect(() => { loadCfg() }, [])
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
@@ -294,7 +302,9 @@ export default function App() {
       className="flex flex-col overflow-hidden rounded-xl text-fg"
       style={{
         maxHeight: maxH,
-        boxShadow: 'var(--shell-shadow)'
+        background: shellBg,
+        ['--shell-bg' as any]: shellBg,
+        boxShadow: 'var(--shell-shadow)',
       }}
     >
       {/* ----- The always-visible input bar (drag handle for the window). ----- */}

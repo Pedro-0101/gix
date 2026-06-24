@@ -34,8 +34,9 @@
     0 8px 24px -6px rgba(0, 0, 0, 0.18);
   --ring-focus: rgba(37, 99, 235, 0.45);
 
-  /* Translucent command-palette surface with backdrop blur effect.
-     Opacity is now applied dynamically via inline styles in App.tsx. */
+  /* Frost overlay over the native Acrylic backdrop. The live value is set inline
+     in App.tsx from the Opacity setting; this is the fallback. */
+  --shell-bg: rgba(255, 255, 255, 0.47);
   --shell-border: rgba(0, 0, 0, 0.08);
   --shell-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.06),
@@ -62,6 +63,7 @@
   --ring-focus: rgba(96, 165, 250, 0.55);
 
   /* Dark mode with backdrop blur. */
+  --shell-bg: rgba(0, 0, 0, 0.26);
   --shell-border: rgba(255, 255, 255, 0.10);
   --shell-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.08),

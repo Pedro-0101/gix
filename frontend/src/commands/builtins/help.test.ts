@@ -30,6 +30,6 @@ describe('formatHelp', () => {
 
   it('renders a command with no aliases as just its name', () => {
     const single: Command[] = [{ name: 'config', descriptionKey: 'cmd_config_desc', run: () => {} }]
-    expect(formatHelp(single, 'pt')).toContain('**/config** — Abre as configurações')
+    expect(formatHelp(single, 'pt')).toContain('**/config** — Altera as configurações')
   })
 })

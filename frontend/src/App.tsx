@@ -4,14 +4,18 @@ import { motion } from 'motion/react'
 import { ChatService, ConfigService } from '../bindings/gix/internal/app'
 import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown } from './lib/events'
 import { MessageCard } from './components/MessageCard'
+import { ChoiceCard, ChoiceSummary } from './components/ChoiceCard'
 import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
 import { analyzeBar } from './commands/highlight'
+import { moveSelection, type Interaction } from './commands/interaction'
 import { tr } from './i18n'
 
 type View = 'chat' | 'settings' | 'history'
-type Msg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean }
+type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean }
+type ChoiceMsg = { role: 'choice'; title: string; chosenLabel: string }
+type Msg = ChatMsg | ChoiceMsg
 
 // Must match the Go side (internal/app/shell.go).
 const WIDTH = 680
@@ -26,6 +30,11 @@ export default function App() {
   const [usage, setUsage] = useState<{ tokens: number; cost: number } | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [nonce, setNonce] = useState(0) // bumped on every window show to replay the enter animation
+  // The active interaction (options card or input prompt), or null. Its promise
+  // resolver and the prompt validator live in refs (they don't affect render).
+  const [interaction, setInteraction] = useState<Interaction | null>(null)
+  const resolverRef = useRef<((v: string | null) => void) | null>(null)
+  const validateRef = useRef<((v: string) => string | null) | undefined>(undefined)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -33,7 +42,7 @@ export default function App() {
   const taRef = useRef<HTMLTextAreaElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
-  const expanded = view !== 'chat' || msgs.length > 0
+  const expanded = view !== 'chat' || msgs.length > 0 || interaction != null
   const maxH = Math.round((window.screen?.availHeight || 900) * TOP_MAX_RATIO)
   const panelMax = Math.max(180, maxH - (barRef.current?.offsetHeight ?? 64))
 
@@ -107,7 +116,8 @@ export default function App() {
   // Each time the window is shown, reset to a clean bar and focus it.
   useEffect(() => {
     const off = onWindowShown(() => {
-      setView('chat'); setMsgs([]); setUsage(null); setInput(''); setStreaming(false)
+      resolverRef.current?.(null); resolverRef.current = null; validateRef.current = undefined
+      setView('chat'); setMsgs([]); setUsage(null); setInput(''); setStreaming(false); setInteraction(null)
       setNonce((n) => n + 1)
       requestAnimationFrame(() => taRef.current?.focus())
     })
@@ -140,6 +150,28 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [view])
 
+  // Keyboard while an interaction is active. Capture phase so Esc/Enter here win
+  // over the global double-Esc-to-hide handler and the bar's send-on-Enter.
+  useEffect(() => {
+    if (!interaction) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelInteraction(); return }
+      if (interaction.kind !== 'choose') return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setInteraction({ ...interaction, selected: moveSelection(interaction.choices.length, interaction.selected, 1) })
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setInteraction({ ...interaction, selected: moveSelection(interaction.choices.length, interaction.selected, -1) })
+      } else if (e.key === 'Enter') {
+        e.preventDefault(); e.stopPropagation()
+        pickChoice(interaction.selected)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [interaction])
+
   // The capability surface commands act through (see commands/types.ts). Built
   // here so commands stay decoupled from React internals.
   const commandContext: CommandContext = {
@@ -152,6 +184,61 @@ export default function App() {
       setView('chat'); setMsgs((m) => [...m, { role: 'system', content: markdown }])
     },
     getCommands: () => commands,
+    choose: (req) => new Promise<string | null>((resolve) => {
+      resolverRef.current = resolve
+      setView('chat')
+      setInteraction({ kind: 'choose', title: req.title, choices: req.choices, selected: 0 })
+    }),
+    prompt: (req) => new Promise<string | null>((resolve) => {
+      resolverRef.current = resolve
+      validateRef.current = req.validate
+      setView('chat'); setInput('')
+      setInteraction({ kind: 'prompt', title: req.title, value: '', placeholder: req.placeholder })
+      requestAnimationFrame(() => taRef.current?.focus())
+    }),
+    config: {
+      get: () => ConfigService.Get() as Promise<Record<string, any>>,
+      apply: async (key, value) => {
+        const cur: any = await ConfigService.Get()
+        await ConfigService.Save({ ...cur, [key]: value })
+        await loadCfg()
+      },
+      models: () => ConfigService.Models().then((m) => m ?? []),
+    },
+  }
+
+  // Finalize the active `choose`: record the pick as an inert message and resolve.
+  const pickChoice = (index: number) => {
+    if (interaction?.kind !== 'choose') return
+    const choice = interaction.choices[index]
+    if (!choice) return
+    const resolve = resolverRef.current
+    resolverRef.current = null
+    setMsgs((m) => [...m, { role: 'choice', title: interaction.title, chosenLabel: choice.label }])
+    setInteraction(null)
+    resolve?.(choice.value)
+  }
+
+  // Finalize the active `prompt`: validate the typed value; on success record it
+  // and resolve, otherwise show the error and keep the bar open.
+  const submitPrompt = () => {
+    if (interaction?.kind !== 'prompt') return
+    const value = input
+    const err = validateRef.current?.(value) ?? null
+    if (err) { setInteraction({ ...interaction, error: err }); return }
+    const resolve = resolverRef.current
+    resolverRef.current = null; validateRef.current = undefined
+    setMsgs((m) => [...m, { role: 'choice', title: interaction.title, chosenLabel: value || '—' }])
+    setInteraction(null); setInput('')
+    resolve?.(value)
+  }
+
+  // Abandon any active interaction (Esc), resolving its promise with null.
+  const cancelInteraction = () => {
+    const resolve = resolverRef.current
+    resolverRef.current = null; validateRef.current = undefined
+    setInteraction(null); setInput('')
+    resolve?.(null)
   }
 
   const send = () => {
@@ -169,6 +256,12 @@ export default function App() {
   const bar = analyzeBar(input)
 
   const onBarKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    // In prompt mode the bar collects a value; Enter submits it (Esc is handled
+    // by the capture-phase interaction listener). No command completion here.
+    if (interaction?.kind === 'prompt') {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitPrompt() }
+      return
+    }
     const ta = e.currentTarget
     const atEnd = ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length
     // Tab anywhere, or → at the end of the text, accepts the name completion.
@@ -222,18 +315,21 @@ export default function App() {
           </div>
           <textarea
             ref={taRef}
-            className="relative block max-h-[132px] w-full resize-none bg-transparent px-0 py-1 text-[15px] leading-relaxed text-transparent caret-[var(--color-fg)] outline-none placeholder:text-muted/70"
+            className="relative block max-h-[132px] w-full resize-none bg-transparent px-0 py-1 text-[15px] leading-relaxed text-transparent caret-[var(--color-fg)] outline-none placeholder:text-muted/70 disabled:cursor-not-allowed"
             rows={1}
             value={input}
-            placeholder={tr(lang, 'placeholder')}
+            disabled={interaction?.kind === 'choose'}
+            placeholder={interaction?.kind === 'prompt'
+              ? (interaction.placeholder ?? tr(lang, 'enter_value'))
+              : tr(lang, 'placeholder')}
             onChange={(e) => setInput(e.target.value)}
             onScroll={(e) => { if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop }}
             onKeyDown={onBarKeyDown}
           />
         </div>
         <button
-          onClick={send}
-          disabled={!input.trim()}
+          onClick={() => (interaction?.kind === 'prompt' ? submitPrompt() : send())}
+          disabled={interaction?.kind === 'choose' || (interaction == null && !input.trim())}
           aria-label={tr(lang, 'placeholder')}
           className="grid size-8 shrink-0 self-center place-items-center rounded-field bg-accent text-white outline-none transition-[scale,opacity] duration-150 ease-out [--wails-draggable:no-drag] hover:brightness-110 active:not-disabled:scale-[0.96] disabled:opacity-40 focus-visible:shadow-[0_0_0_2px_var(--shell-bg),0_0_0_4px_var(--ring-focus)]"
         >
@@ -259,12 +355,33 @@ export default function App() {
                   <span>${usage.cost.toFixed(6)}</span>
                 </div>
               )}
-              {msgs.map((m, i) => (
+              {msgs.map((m, i) => m.role === 'choice' ? (
+                <ChoiceSummary key={i} title={m.title} chosenLabel={m.chosenLabel} />
+              ) : (
                 <MessageCard key={i} role={m.role}
                   content={m.pending ? tr(lang, 'thinking') : m.content}
                   pending={m.pending}
                   label={m.role === 'user' ? tr(lang, 'you') : m.role === 'system' ? tr(lang, 'system') : tr(lang, 'ai')} />
               ))}
+              {interaction?.kind === 'choose' && (
+                <ChoiceCard
+                  title={interaction.title}
+                  choices={interaction.choices}
+                  selected={interaction.selected}
+                  onHover={(i) => setInteraction({ ...interaction, selected: i })}
+                  onPick={(i) => pickChoice(i)}
+                />
+              )}
+              {interaction?.kind === 'prompt' && (
+                <div className="flex flex-col gap-1 px-1">
+                  <span className="flex items-center gap-1 text-[11px] font-semibold tracking-wide text-accent">
+                    {interaction.title}
+                  </span>
+                  {interaction.error && (
+                    <span className="font-mono text-xs text-red-500">{interaction.error}</span>
+                  )}
+                </div>
+              )}
               <div ref={endRef} />
             </div>
           )}

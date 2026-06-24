@@ -32,8 +32,13 @@ const pt: Record<string, string> = {
   cmd_help_title: 'Comandos disponíveis:',
   cmd_help_desc: 'Lista os comandos disponíveis',
   cmd_new_desc: 'Inicia uma nova conversa',
-  cmd_config_desc: 'Abre as configurações',
+  cmd_config_desc: 'Altera as configurações',
   cmd_history_desc: 'Abre o histórico de conversas',
+  cfg_which: 'Qual configuração?',
+  cfg_saved: 'Configuração salva:',
+  cfg_invalid_range: 'Informe um número inteiro entre 0 e 100.',
+  cfg_invalid_positive: 'Informe um número inteiro maior que zero.',
+  enter_value: 'digite o valor…',
 }
 
 const en: Record<string, string> = {
@@ -70,8 +75,13 @@ const en: Record<string, string> = {
   cmd_help_title: 'Available commands:',
   cmd_help_desc: 'Lists the available commands',
   cmd_new_desc: 'Starts a new conversation',
-  cmd_config_desc: 'Opens settings',
+  cmd_config_desc: 'Changes settings',
   cmd_history_desc: 'Opens conversation history',
+  cfg_which: 'Which setting?',
+  cfg_saved: 'Setting saved:',
+  cfg_invalid_range: 'Enter an integer between 0 and 100.',
+  cfg_invalid_positive: 'Enter an integer greater than zero.',
+  enter_value: 'type the value…',
 }
 
 export function tr(lang: string, key: string): string {

@@ -20,3 +20,4 @@ fixes
 - Retirar corretor de texto na barra de texto
 - Ao mudar linguagem, ele deveria alterar todos os textos do menu de configuração ao mesmo tempo
 - melhorar modo acrilico, esta muito escuro
+- impedir que possa redimencionar ou alterar tamanho da janela puxando as bordas

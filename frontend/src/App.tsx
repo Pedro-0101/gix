@@ -249,12 +249,14 @@ export default function App() {
     resolve?.(value)
   }
 
-  // Abandon any active interaction (Esc), resolving its promise with null.
+  // Abandon any active interaction (Esc), resolving its promise with null. Return
+  // focus to the bar (it was disabled during a choose) so the user can keep typing.
   const cancelInteraction = () => {
     const resolve = resolverRef.current
     resolverRef.current = null; validateRef.current = undefined
     setInteraction(null); setInput('')
     resolve?.(null)
+    requestAnimationFrame(() => taRef.current?.focus())
   }
 
   const send = () => {

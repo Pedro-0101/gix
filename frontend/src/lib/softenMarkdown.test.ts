@@ -16,6 +16,10 @@ describe('softenMarkdown', () => {
     expect(softenMarkdown('rode `cod')).toBe('rode cod')
   })
 
+  it('mantém marcador fechado e esconde aberto separado', () => {
+    expect(softenMarkdown('**bold** e `parcial')).toBe('**bold** e parcial')
+  })
+
   it('mostra só o texto de um link parcial', () => {
     expect(softenMarkdown('veja [docs](http://exemplo')).toBe('veja docs')
   })

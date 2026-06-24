@@ -10,6 +10,7 @@ import { HistoryView } from './views/HistoryView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
 import { analyzeBar } from './commands/highlight'
 import { moveSelection, type Interaction } from './commands/interaction'
+import { emptyHistory, record as recordPrompt, prev as prevPrompt, next as nextPrompt, detach as detachPrompt, type PromptHistory } from './commands/promptHistory'
 import { tr } from './i18n'
 
 type View = 'chat' | 'settings' | 'history'
@@ -20,6 +21,19 @@ type Msg = ChatMsg | ChoiceMsg
 // Must match the Go side (internal/app/shell.go).
 const WIDTH = 680
 const TOP_MAX_RATIO = 0.6
+
+// Submitted prompts persist across window shows and app restarts via localStorage,
+// so ArrowUp recalls them like a shell history.
+const PROMPT_HISTORY_KEY = 'gix.promptHistory'
+const loadPromptHistory = (): PromptHistory => {
+  try {
+    const raw = localStorage.getItem(PROMPT_HISTORY_KEY)
+    return emptyHistory(raw ? JSON.parse(raw) : [])
+  } catch { return emptyHistory() }
+}
+const savePromptHistory = (h: PromptHistory) => {
+  try { localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(h.entries)) } catch { /* storage unavailable */ }
+}
 
 export default function App() {
   const [view, setView] = useState<View>('chat')
@@ -36,6 +50,9 @@ export default function App() {
   const [interaction, setInteraction] = useState<Interaction | null>(null)
   const resolverRef = useRef<((v: string | null) => void) | null>(null)
   const validateRef = useRef<((v: string) => string | null) | undefined>(undefined)
+  // Recall history for the bar (oldest → newest submitted prompts), in a ref since
+  // it drives the input through setInput and doesn't itself need a re-render.
+  const historyRef = useRef<PromptHistory>(loadPromptHistory())
 
   const rootRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -130,6 +147,7 @@ export default function App() {
   useEffect(() => {
     const off = onWindowShown(() => {
       resolverRef.current?.(null); resolverRef.current = null; validateRef.current = undefined
+      historyRef.current = detachPrompt(historyRef.current)
       setView('chat'); setMsgs([]); setUsage(null); setInput(''); setStreaming(false); setInteraction(null)
       setNonce((n) => n + 1)
       requestAnimationFrame(() => taRef.current?.focus())
@@ -262,6 +280,8 @@ export default function App() {
   const send = () => {
     const text = input.trim()
     if (!text) return
+    historyRef.current = recordPrompt(historyRef.current, text)
+    savePromptHistory(historyRef.current)
     const cmd = resolveCommand(text)
     if (cmd) { cmd.run(commandContext); setInput(''); return }
     setView('chat')
@@ -272,6 +292,15 @@ export default function App() {
   }
 
   const bar = analyzeBar(input)
+
+  // Drop a recalled prompt into the bar and park the caret at the end.
+  const recallValue = (value: string) => {
+    setInput(value)
+    requestAnimationFrame(() => {
+      const ta = taRef.current
+      if (ta) ta.selectionStart = ta.selectionEnd = value.length
+    })
+  }
 
   const onBarKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     // In prompt mode the bar collects a value; Enter submits it (Esc is handled
@@ -285,6 +314,18 @@ export default function App() {
     // Tab anywhere, or → at the end of the text, accepts the name completion.
     if (bar.completion && (e.key === 'Tab' || (e.key === 'ArrowRight' && atEnd))) {
       e.preventDefault(); setInput(bar.accepted); return
+    }
+    // ↑/↓ recall earlier/later prompts, but only from the first/last line so
+    // multi-line editing keeps normal caret movement.
+    if (e.key === 'ArrowUp' && !ta.value.slice(0, ta.selectionStart).includes('\n')) {
+      const r = prevPrompt(historyRef.current, ta.value)
+      if (r.handled) { e.preventDefault(); historyRef.current = r.history; recallValue(r.value) }
+      return
+    }
+    if (e.key === 'ArrowDown' && !ta.value.slice(ta.selectionEnd).includes('\n')) {
+      const r = nextPrompt(historyRef.current)
+      if (r.handled) { e.preventDefault(); historyRef.current = r.history; recallValue(r.value) }
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
@@ -338,11 +379,14 @@ export default function App() {
             className="relative block max-h-[132px] w-full resize-none bg-transparent px-0 py-1 text-[15px] leading-relaxed text-transparent caret-[var(--color-fg)] outline-none placeholder:text-muted/70 disabled:cursor-not-allowed"
             rows={1}
             value={input}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
             disabled={interaction?.kind === 'choose'}
             placeholder={interaction?.kind === 'prompt'
               ? (interaction.placeholder ?? tr(lang, 'enter_value'))
               : tr(lang, 'placeholder')}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { historyRef.current = detachPrompt(historyRef.current); setInput(e.target.value) }}
             onScroll={(e) => { if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop }}
             onKeyDown={onBarKeyDown}
           />

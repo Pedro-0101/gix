@@ -3,7 +3,6 @@ features
 - Anexar arquivos e imagens
 - Anexar screenshots
 - Reconhecimento da tela atual
-- Apertar seta/baixo pra cima para andar através do histórico de sessões
 - Adicionar configurações de acrilico do background
 - Fazer pacote instalador para versionamento mais fácil
 - Fazer atualizador remoto(por comando, notificar usuarios)
@@ -15,5 +14,4 @@ features
 
 
 fixes
-- Retirar corretor de texto na barra de texto
 - melhorar modo acrilico, esta muito escuro

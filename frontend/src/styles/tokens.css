@@ -10,10 +10,13 @@
 
 :root, [data-theme="light"] {
   --color-bg: #ffffff;
-  --color-surface: #f4f4f5;
-  --color-bubble: #e9e9ee;
+  /* Over the Acrylic backdrop the panes are translucent white "frost" that read
+     a touch brighter than the desktop blur; the --shadow-border ring gives them
+     their edge. Text stays near-opaque for contrast against a variable backdrop. */
+  --color-surface: rgba(255, 255, 255, 0.6);
+  --color-bubble: rgba(255, 255, 255, 0.55);
   --color-fg: #18181b;
-  --color-muted: #6b7280;
+  --color-muted: #52525b;
   --color-accent: #2563eb;
   --color-danger: #dc2626;
 
@@ -41,8 +44,10 @@
 
 [data-theme="dark"] {
   --color-bg: #18181b;
-  --color-surface: #27272a;
-  --color-bubble: #3f3f46;
+  /* On the dark Acrylic backdrop, panes are a faint white lift rather than an
+     opaque slab — they catch light over the blur without hiding it. */
+  --color-surface: rgba(255, 255, 255, 0.09);
+  --color-bubble: rgba(255, 255, 255, 0.13);
   --color-fg: #fafafa;
   --color-muted: #a1a1aa;
   --color-accent: #60a5fa;

@@ -205,8 +205,13 @@ tasks:
 
   dev:frontend:
     summary: Runs the frontend in development mode
-    deps:
-      - task: install:frontend:deps
+    # NOTE: no `install:frontend:deps` dep here on purpose. In the `wails3 dev`
+    # flow the blocking `build DEV=true` step already installs frontend deps
+    # before this background task starts, so installing again just re-runs a
+    # slow `npm install` that can make Vite start after the native binary's
+    # dev-server connect window expires (FRONTEND_DEVSERVER_URL timeout).
+    # If you run this task standalone on a fresh checkout, run
+    # `wails3 task common:install:frontend:deps` first.
     cmds:
       - task: frontend:dev:{{.PACKAGE_MANAGER}}
 

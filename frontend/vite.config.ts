@@ -6,6 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
+    // Wails' asset proxy dials IPv4 `tcp4 127.0.0.1:<port>`, so bind Vite to
+    // 127.0.0.1 (not "localhost", which on Windows binds IPv6 ::1 only and makes
+    // the proxy fail with "connection refused").
     host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,

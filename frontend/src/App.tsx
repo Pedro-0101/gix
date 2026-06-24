@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Window } from '@wailsio/runtime'
 import { motion } from 'motion/react'
 import { ChatService, ConfigService } from '../bindings/gix/internal/app'
@@ -7,6 +7,7 @@ import { MessageCard } from './components/MessageCard'
 import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
+import { analyzeBar } from './commands/highlight'
 import { tr } from './i18n'
 
 type View = 'chat' | 'settings' | 'history'
@@ -30,6 +31,7 @@ export default function App() {
   const barRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
 
   const expanded = view !== 'chat' || msgs.length > 0
   const maxH = Math.round((window.screen?.availHeight || 900) * TOP_MAX_RATIO)
@@ -164,6 +166,18 @@ export default function App() {
     setInput('')
   }
 
+  const bar = analyzeBar(input)
+
+  const onBarKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = e.currentTarget
+    const atEnd = ta.selectionStart === ta.value.length && ta.selectionEnd === ta.value.length
+    // Tab anywhere, or → at the end of the text, accepts the name completion.
+    if (bar.completion && (e.key === 'Tab' || (e.key === 'ArrowRight' && atEnd))) {
+      e.preventDefault(); setInput(bar.accepted); return
+    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
   const item = {
     hidden: { opacity: 0, y: 8, filter: 'blur(4px)' },
     show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { type: 'spring' as const, duration: 0.3, bounce: 0 } },
@@ -191,15 +205,32 @@ export default function App() {
         <span className="grid size-7 shrink-0 place-items-center self-center text-muted [--wails-draggable:no-drag]">
           {streaming ? <Spinner /> : <PromptIcon />}
         </span>
-        <textarea
-          ref={taRef}
-          className="max-h-[132px] flex-1 resize-none self-center bg-transparent py-1 text-[15px] leading-relaxed text-fg outline-none placeholder:text-muted/70 [--wails-draggable:no-drag]"
-          rows={1}
-          value={input}
-          placeholder={tr(lang, 'placeholder')}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-        />
+        {/* The textarea text is transparent; the overlay behind it paints the
+            command token (accent) and the ghost name completion (muted). They
+            share identical typography so the layers line up exactly. */}
+        <div className="relative flex-1 self-center [--wails-draggable:no-drag]">
+          <div
+            ref={overlayRef}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 max-h-[132px] overflow-hidden whitespace-pre-wrap break-words px-0 py-1 text-[15px] leading-relaxed"
+          >
+            {input.length > 0 && (bar.isCommand ? (
+              <><span className="text-accent">{input}</span><span className="text-muted/50">{bar.completion}</span></>
+            ) : (
+              <span className="text-fg">{input}</span>
+            ))}
+          </div>
+          <textarea
+            ref={taRef}
+            className="relative block max-h-[132px] w-full resize-none bg-transparent px-0 py-1 text-[15px] leading-relaxed text-transparent caret-[var(--color-fg)] outline-none placeholder:text-muted/70"
+            rows={1}
+            value={input}
+            placeholder={tr(lang, 'placeholder')}
+            onChange={(e) => setInput(e.target.value)}
+            onScroll={(e) => { if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop }}
+            onKeyDown={onBarKeyDown}
+          />
+        </div>
         <button
           onClick={send}
           disabled={!input.trim()}

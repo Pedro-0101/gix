@@ -62,7 +62,9 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		Frameless:   true,
 		AlwaysOnTop: true,
 		Hidden:      true,
-		DisableResize: false,
+		// The palette sizes itself to its content; the user must not be able to
+		// drag the edges to resize it.
+		DisableResize: true,
 		// Frosted-glass overlay: the OS composites an Acrylic backdrop behind the
 		// window and the web content paints transparently on top (no CSS shell
 		// background). Acrylic is the reliable native translucency path on Windows;

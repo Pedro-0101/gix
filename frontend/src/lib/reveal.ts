@@ -1,6 +1,8 @@
 // Reveal engine: desacopla o texto que chega (target) do texto exibido (shown).
 // Ritmo de catch-up exponencial — um só formato cobre stream e drain.
 
+import { useEffect, useRef, useState } from 'react'
+
 export const BASE_CPS = 80 // piso de caracteres/segundo durante o stream
 export const TAU = 0.4     // constante de tempo (s) da aproximação ao alvo
 
@@ -14,8 +16,6 @@ export function nextShown(shown: number, targetLen: number, dtSec: number, done:
   if (done && targetLen - advanced < 1) return targetLen
   return advanced
 }
-
-import { useEffect, useRef, useState } from 'react'
 
 // useReveal avança um cursor por requestAnimationFrame até alcançar target.length.
 // O cursor real é float (acúmulo sub-caractere); expõe Math.floor para exibir.

@@ -41,12 +41,17 @@ export default function App() {
   const endRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
+  // Always-current language, so a running command (e.g. /config) sees a language
+  // change mid-flow instead of the value captured when it started.
+  const langRef = useRef(lang)
+  useEffect(() => { langRef.current = lang }, [lang])
 
   const expanded = view !== 'chat' || msgs.length > 0 || interaction != null
   const maxH = Math.round((window.screen?.availHeight || 900) * TOP_MAX_RATIO)
   const panelMax = Math.max(180, maxH - (barRef.current?.offsetHeight ?? 64))
 
   const loadCfg = () => ConfigService.Get().then((c: any) => {
+    langRef.current = c.language // sync now so an awaiting command sees it immediately
     setLang(c.language); setTheme(c.theme)
   }).catch(() => {})
   useEffect(() => { loadCfg() }, [])
@@ -175,7 +180,8 @@ export default function App() {
   // The capability surface commands act through (see commands/types.ts). Built
   // here so commands stay decoupled from React internals.
   const commandContext: CommandContext = {
-    lang,
+    // Getter, not a snapshot: a long-running command reads the live language.
+    get lang() { return langRef.current },
     setView,
     newConversation: () => {
       ChatService.NewConversation(); setMsgs([]); setUsage(null); setView('chat')

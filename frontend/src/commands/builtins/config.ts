@@ -22,13 +22,15 @@ export const configCommand: Command = {
       if (field.kind === 'enum') {
         const models = field.key === 'model' ? await ctx.config.models() : []
         value = await ctx.choose({ title: tr(ctx.lang, field.labelKey), choices: field.choices({ lang: ctx.lang, models }) })
+      } else if (field.kind === 'number') {
+        // Seed the slider with the current value (clamped into range), so ←/→
+        // adjust from where the setting actually is.
+        const cur = await ctx.config.get()
+        const raw = Number(cur[field.key])
+        const start = Number.isFinite(raw) ? Math.min(field.max, Math.max(field.min, raw)) : field.min
+        value = await ctx.slider({ title: tr(ctx.lang, field.labelKey), value: start, min: field.min, max: field.max, step: field.step })
       } else {
-        value = await ctx.prompt({
-          title: tr(ctx.lang, field.labelKey),
-          validate: field.kind === 'number'
-            ? (v) => { const k = field.validate(v); return k ? tr(ctx.lang, k) : null }
-            : undefined,
-        })
+        value = await ctx.prompt({ title: tr(ctx.lang, field.labelKey) })
       }
       if (value == null) continue // cancelled value → back to the field menu
 

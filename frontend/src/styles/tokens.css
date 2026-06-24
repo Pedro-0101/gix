@@ -10,11 +10,11 @@
 
 :root, [data-theme="light"] {
   --color-bg: #ffffff;
-  /* Over the Acrylic backdrop the panes are translucent white "frost" that read
-     a touch brighter than the desktop blur; the --shadow-border ring gives them
-     their edge. Text stays near-opaque for contrast against a variable backdrop. */
-  --color-surface: rgba(255, 255, 255, 0.6);
-  --color-bubble: rgba(255, 255, 255, 0.55);
+  /* Panes that hold text are near-opaque so they stay readable over the variable
+     Acrylic backdrop — only a hint of translucency keeps the material feel. The
+     translucency lives in the shell frost (--shell-bg), not in text containers. */
+  --color-surface: rgba(255, 255, 255, 0.96);
+  --color-bubble: rgba(248, 250, 252, 0.94);
   --color-fg: #18181b;
   --color-muted: #52525b;
   --color-accent: #2563eb;
@@ -45,10 +45,10 @@
 
 [data-theme="dark"] {
   --color-bg: #18181b;
-  /* On the dark Acrylic backdrop, panes are a faint white lift rather than an
-     opaque slab — they catch light over the blur without hiding it. */
-  --color-surface: rgba(255, 255, 255, 0.09);
-  --color-bubble: rgba(255, 255, 255, 0.13);
+  /* Over the lighter frosted shell, text panes are near-opaque dark cards so the
+     light foreground stays legible and the boxes read as solid, not see-through. */
+  --color-surface: rgba(36, 36, 42, 0.94);
+  --color-bubble: rgba(50, 50, 58, 0.92);
   --color-fg: #fafafa;
   --color-muted: #a1a1aa;
   --color-accent: #60a5fa;
@@ -62,8 +62,10 @@
     0 8px 28px -6px rgba(0, 0, 0, 0.55);
   --ring-focus: rgba(96, 165, 250, 0.55);
 
-  /* Dark mode with backdrop blur. */
-  --shell-bg: rgba(0, 0, 0, 0.26);
+  /* Dark mode frost: a faint white lift over the Acrylic blur (not a black
+     overlay), matching lib/frost.ts. The live value is set inline in App.tsx
+     from the Opacity setting; this is the fallback. */
+  --shell-bg: rgba(255, 255, 255, 0.15);
   --shell-border: rgba(255, 255, 255, 0.10);
   --shell-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.08),

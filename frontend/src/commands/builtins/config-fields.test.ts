@@ -63,6 +63,20 @@ describe('number validators', () => {
     expect(f.validate('-5')).toBe('cfg_invalid_positive')
     expect(f.validate('x')).toBe('cfg_invalid_positive')
   })
+
+  it('carry slider bounds (min/max/step) for the value control', () => {
+    const opacity = findField('opacity')!
+    if (opacity.kind !== 'number') return
+    expect([opacity.min, opacity.max, opacity.step]).toEqual([0, 100, 5])
+
+    for (const key of ['open_interval_ms', 'close_interval_ms']) {
+      const f = findField(key)!
+      if (f.kind !== 'number') return
+      expect(f.min).toBeGreaterThan(0)
+      expect(f.max).toBeGreaterThan(f.min)
+      expect(f.step).toBeGreaterThan(0)
+    }
+  })
 })
 
 describe('text fields', () => {

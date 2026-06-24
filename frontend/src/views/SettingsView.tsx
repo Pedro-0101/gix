@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { ConfigService } from '../../bindings/gix/internal/app'
 import { Button } from '../components/Button'
+import { Slider } from '../components/Slider'
 import { tr } from '../i18n'
 
 const KEY_OPTIONS = ['Space', 'Escape', 'Tab', 'Enter']
@@ -76,39 +77,48 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
           </select>
         </Row>
 
-        <Row label={tr(lang, 'open_hotkey')} i={4}>
+        <Row label={tr(lang, 'opacity')} i={4}>
+          <Slider
+            ariaLabel={tr(lang, 'opacity')}
+            value={cfg.opacity ?? 85}
+            min={0}
+            max={100}
+            step={5}
+            onChange={(v) => set('opacity', v)}
+          />
+        </Row>
+
+        <Row label={tr(lang, 'open_hotkey')} i={5}>
           <select className={field} value={cfg.open_key} onChange={(e) => set('open_key', e.target.value)}>
             {KEY_OPTIONS.map((k) => (<option key={k} value={k}>{k}</option>))}
           </select>
         </Row>
 
-        <Row label={tr(lang, 'open_interval')} i={5}>
-          <input
-            type="number"
-            className={`${field} tabular-nums`}
+        <Row label={tr(lang, 'open_interval')} i={6}>
+          <Slider
+            ariaLabel={tr(lang, 'open_interval')}
             value={cfg.open_interval_ms}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10)
-              set('open_interval_ms', isNaN(n) ? cfg.open_interval_ms : n)
-            }}
+            min={100}
+            max={2000}
+            step={50}
+            onChange={(v) => set('open_interval_ms', v)}
           />
         </Row>
 
-        <Row label={tr(lang, 'close_hotkey')} i={6}>
+        <Row label={tr(lang, 'close_hotkey')} i={7}>
           <select className={field} value={cfg.close_key} onChange={(e) => set('close_key', e.target.value)}>
             {KEY_OPTIONS.map((k) => (<option key={k} value={k}>{k}</option>))}
           </select>
         </Row>
 
-        <Row label={tr(lang, 'close_interval')} i={7}>
-          <input
-            type="number"
-            className={`${field} tabular-nums`}
+        <Row label={tr(lang, 'close_interval')} i={8}>
+          <Slider
+            ariaLabel={tr(lang, 'close_interval')}
             value={cfg.close_interval_ms}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10)
-              set('close_interval_ms', isNaN(n) ? cfg.close_interval_ms : n)
-            }}
+            min={100}
+            max={2000}
+            step={50}
+            onChange={(v) => set('close_interval_ms', v)}
           />
         </Row>
 

@@ -9,12 +9,21 @@ export const KEY_OPTIONS = ['Space', 'Escape', 'Tab', 'Enter']
 export type FieldEnv = { lang: string; models: string[] }
 
 // A single configuration field, described declaratively. 'enum' fields are
-// picked from a list; 'text'/'number' fields are typed in the bar. Validators
-// return an i18n error key, or null when the value is acceptable.
+// picked from a list; 'text' fields are typed in the bar; 'number' fields are
+// adjusted with a bounded slider (min/max/step). The validator still guards any
+// path that types a raw value, returning an i18n error key or null when valid.
 export type FieldDef =
   | { key: string; labelKey: string; kind: 'enum'; choices(env: FieldEnv): Choice[] }
   | { key: string; labelKey: string; kind: 'text' }
-  | { key: string; labelKey: string; kind: 'number'; validate(v: string): string | null }
+  | {
+      key: string
+      labelKey: string
+      kind: 'number'
+      min: number
+      max: number
+      step: number
+      validate(v: string): string | null
+    }
 
 function inRange(min: number, max: number) {
   return (v: string): string | null => {
@@ -39,13 +48,13 @@ export const CONFIG_FIELDS: FieldDef[] = [
     choices: (e) => [{ label: tr(e.lang, 'portuguese'), value: 'pt' }, { label: tr(e.lang, 'english'), value: 'en' }] },
   { key: 'model', labelKey: 'model', kind: 'enum',
     choices: (e) => e.models.map((m) => ({ label: m, value: m })) },
-  { key: 'opacity', labelKey: 'opacity', kind: 'number', validate: inRange(0, 100) },
+  { key: 'opacity', labelKey: 'opacity', kind: 'number', min: 0, max: 100, step: 5, validate: inRange(0, 100) },
   { key: 'open_key', labelKey: 'open_hotkey', kind: 'enum',
     choices: () => KEY_OPTIONS.map((k) => ({ label: k, value: k })) },
-  { key: 'open_interval_ms', labelKey: 'open_interval', kind: 'number', validate: positiveInt },
+  { key: 'open_interval_ms', labelKey: 'open_interval', kind: 'number', min: 100, max: 2000, step: 50, validate: positiveInt },
   { key: 'close_key', labelKey: 'close_hotkey', kind: 'enum',
     choices: () => KEY_OPTIONS.map((k) => ({ label: k, value: k })) },
-  { key: 'close_interval_ms', labelKey: 'close_interval', kind: 'number', validate: positiveInt },
+  { key: 'close_interval_ms', labelKey: 'close_interval', kind: 'number', min: 100, max: 2000, step: 50, validate: positiveInt },
   { key: 'api_key', labelKey: 'api_key', kind: 'text' },
   { key: 'system_prompt', labelKey: 'system_prompt', kind: 'text' },
 ]

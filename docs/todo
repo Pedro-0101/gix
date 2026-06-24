@@ -3,15 +3,12 @@ features
 - Anexar arquivos e imagens
 - Anexar screenshots
 - Reconhecimento da tela atual
-- Adicionar configurações de acrilico do background
 - Fazer pacote instalador para versionamento mais fácil
 - Fazer atualizador remoto(por comando, notificar usuarios)
 - Adicionar área para comunicação do sistema com usuário
 - Adicionar interações com o sistema operacional
 - Iniciar sistema de organização de notas(ideia inicial core buisness)
 - Fazer mecanica para letras e palavras aparecerem aos poucos suavemente de forma continua
-- Fazer componente slider que desliza com as teclas de direita e esquerda reutilizavel no sistema para configuracao de campos numericos
 
 
 fixes
-- melhorar modo acrilico, esta muito escuro

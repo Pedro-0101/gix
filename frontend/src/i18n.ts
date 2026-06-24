@@ -39,6 +39,7 @@ const pt: Record<string, string> = {
   cfg_invalid_range: 'Informe um número inteiro entre 0 e 100.',
   cfg_invalid_positive: 'Informe um número inteiro maior que zero.',
   enter_value: 'digite o valor…',
+  slider_hint: '← → ajusta · Enter confirma · Esc cancela',
 }
 
 const en: Record<string, string> = {
@@ -82,6 +83,7 @@ const en: Record<string, string> = {
   cfg_invalid_range: 'Enter an integer between 0 and 100.',
   cfg_invalid_positive: 'Enter an integer greater than zero.',
   enter_value: 'type the value…',
+  slider_hint: '← → adjust · Enter confirm · Esc cancel',
 }
 
 export function tr(lang: string, key: string): string {

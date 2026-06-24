@@ -24,6 +24,9 @@ export interface CommandContext {
   // Puts the bar into input mode; resolves with the typed value once it passes
   // `validate` (which returns an i18n error key or null), or null on cancel.
   prompt(req: { title: string; placeholder?: string; validate?: (v: string) => string | null }): Promise<string | null>
+  // Shows a bounded slider (←/→ adjust, Enter commits); resolves with the chosen
+  // value as a string, or null on cancel. Used for numeric settings.
+  slider(req: { title: string; value: number; min: number; max: number; step: number }): Promise<string | null>
   // Configuration access: read the current values, or persist one field and
   // reflect it live (theme, language, …).
   config: {

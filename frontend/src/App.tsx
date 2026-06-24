@@ -5,6 +5,8 @@ import { ChatService, ConfigService } from '../bindings/gix/internal/app'
 import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown } from './lib/events'
 import { MessageCard } from './components/MessageCard'
 import { ChoiceCard, ChoiceSummary } from './components/ChoiceCard'
+import { Slider } from './components/Slider'
+import { frostColor } from './lib/frost'
 import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
@@ -67,12 +69,12 @@ export default function App() {
   const expanded = view !== 'chat' || msgs.length > 0 || interaction != null
   const maxH = Math.round((window.screen?.availHeight || 900) * TOP_MAX_RATIO)
   const panelMax = Math.max(180, maxH - (barRef.current?.offsetHeight ?? 64))
-  // Frost overlay over the native Acrylic backdrop: a translucent white (light)
-  // or black (dark) layer whose strength follows the Opacity setting. Without it
-  // the raw Acrylic tint reads too dark; users tune it via /config → Opacidade.
-  const shellBg = theme === 'dark'
-    ? `rgba(0, 0, 0, ${(opacity / 100) * 0.3})`
-    : `rgba(255, 255, 255, ${(opacity / 100) * 0.55})`
+  // Frost overlay over the native Acrylic backdrop: a translucent white veil whose
+  // strength follows the Opacity setting. Both themes lift toward white (never a
+  // black overlay), so raising Opacity always reads brighter/more legible — dark
+  // mode no longer looks like a near-black slab. Users tune it via /config →
+  // Opacidade or the Settings slider. See lib/frost.ts.
+  const shellBg = frostColor(theme, opacity)
 
   const loadCfg = () => ConfigService.Get().then((c: any) => {
     langRef.current = c.language // sync now so an awaiting command sees it immediately
@@ -228,6 +230,11 @@ export default function App() {
       setInteraction({ kind: 'prompt', title: req.title, value: '', placeholder: req.placeholder })
       requestAnimationFrame(() => taRef.current?.focus())
     }),
+    slider: (req) => new Promise<string | null>((resolve) => {
+      resolverRef.current = resolve
+      setView('chat')
+      setInteraction({ kind: 'slider', title: req.title, value: req.value, min: req.min, max: req.max, step: req.step })
+    }),
     config: {
       get: () => ConfigService.Get() as Promise<Record<string, any>>,
       apply: async (key, value) => {
@@ -265,6 +272,19 @@ export default function App() {
     setMsgs((m) => [...m, { role: 'choice', title: interaction.title, chosenLabel: value || '—' }])
     setInteraction(null); setInput('')
     resolve?.(value)
+  }
+
+  // Finalize the active `slider`: record the chosen number as an inert message and
+  // resolve with its string form (config.apply coerces it back to a number).
+  const submitSlider = () => {
+    if (interaction?.kind !== 'slider') return
+    const value = interaction.value
+    const resolve = resolverRef.current
+    resolverRef.current = null
+    setMsgs((m) => [...m, { role: 'choice', title: interaction.title, chosenLabel: String(value) }])
+    setInteraction(null)
+    resolve?.(String(value))
+    requestAnimationFrame(() => taRef.current?.focus())
   }
 
   // Abandon any active interaction (Esc), resolving its promise with null. Return
@@ -382,7 +402,7 @@ export default function App() {
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            disabled={interaction?.kind === 'choose'}
+            disabled={interaction?.kind === 'choose' || interaction?.kind === 'slider'}
             placeholder={interaction?.kind === 'prompt'
               ? (interaction.placeholder ?? tr(lang, 'enter_value'))
               : tr(lang, 'placeholder')}
@@ -392,7 +412,7 @@ export default function App() {
           />
         </div>
         <button
-          onClick={() => (interaction?.kind === 'prompt' ? submitPrompt() : send())}
+          onClick={() => (interaction?.kind === 'prompt' ? submitPrompt() : interaction?.kind === 'slider' ? submitSlider() : send())}
           disabled={interaction?.kind === 'choose' || (interaction == null && !input.trim())}
           aria-label={tr(lang, 'placeholder')}
           className="grid size-8 shrink-0 self-center place-items-center rounded-field bg-accent text-white outline-none transition-[scale,opacity] duration-150 ease-out [--wails-draggable:no-drag] hover:brightness-110 active:not-disabled:scale-[0.96] disabled:opacity-40 focus-visible:shadow-[0_0_0_2px_var(--shell-bg),0_0_0_4px_var(--ring-focus)]"
@@ -445,6 +465,27 @@ export default function App() {
                     <span className="font-mono text-xs text-red-500">{interaction.error}</span>
                   )}
                 </div>
+              )}
+              {interaction?.kind === 'slider' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  transition={{ type: 'spring', duration: 0.35, bounce: 0 }}
+                  className="flex flex-col gap-1.5 px-1"
+                >
+                  <span className="text-[11px] font-semibold tracking-wide text-accent">{interaction.title}</span>
+                  <Slider
+                    autoFocus
+                    ariaLabel={interaction.title}
+                    value={interaction.value}
+                    min={interaction.min}
+                    max={interaction.max}
+                    step={interaction.step}
+                    onChange={(v) => setInteraction({ ...interaction, value: v })}
+                    onCommit={submitSlider}
+                  />
+                  <span className="text-[11px] text-muted">{tr(lang, 'slider_hint')}</span>
+                </motion.div>
               )}
               <div ref={endRef} />
             </div>

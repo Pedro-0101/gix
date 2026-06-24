@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A gix-scaffold application
+Name=gix
+Comment=Overlay de chat com IA acionado por hotkey global
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/gix-scaffold.exe %u
+Exec=/usr/local/bin/gix %u
 Terminal=false
 Type=Application
-Icon=gix-scaffold.exe
+Icon=gix
 Categories=Utility;
-StartupWMClass=gix-scaffold.exe
+StartupWMClass=gix
 
  

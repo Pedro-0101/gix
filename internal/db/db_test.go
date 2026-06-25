@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -55,6 +56,102 @@ func TestConversationLifecycle(t *testing.T) {
 	msgs, _ = d.GetMessages(id)
 	if len(msgs) != 0 {
 		t.Fatalf("esperava 0 mensagens apos delete, veio %d", len(msgs))
+	}
+}
+
+func TestNoteLifecycle(t *testing.T) {
+	d := openTestDB(t)
+
+	id, err := d.CreateNote("Lembretes", "- comprar shampoo", 10, "append")
+	if err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+
+	n, err := d.GetNote(id)
+	if err != nil {
+		t.Fatalf("GetNote: %v", err)
+	}
+	if n.Title != "Lembretes" || n.Content != "- comprar shampoo" || n.LineLimit != 10 || n.IntegrationMode != "append" {
+		t.Fatalf("nota inesperada: %+v", n)
+	}
+	if n.CreatedAt == "" {
+		t.Fatalf("CreatedAt vazio: %+v", n)
+	}
+
+	if err := d.UpdateNoteContent(id, "- comprar shampoo\n- pagar conta"); err != nil {
+		t.Fatalf("UpdateNoteContent: %v", err)
+	}
+	n, _ = d.GetNote(id)
+	if n.Content != "- comprar shampoo\n- pagar conta" {
+		t.Fatalf("conteúdo não atualizado: %q", n.Content)
+	}
+	if n.UpdatedAt == "" {
+		t.Fatalf("UpdatedAt deveria ser preenchido após update: %+v", n)
+	}
+
+	// Uma segunda nota para validar a listagem.
+	if _, err := d.CreateNote("Ideias", "- app de notas", 0, ""); err != nil {
+		t.Fatalf("CreateNote 2: %v", err)
+	}
+	notes, err := d.ListNotes()
+	if err != nil {
+		t.Fatalf("ListNotes: %v", err)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("esperava 2 notas, veio %d", len(notes))
+	}
+
+	if err := d.DeleteNote(id); err != nil {
+		t.Fatalf("DeleteNote: %v", err)
+	}
+	notes, _ = d.ListNotes()
+	if len(notes) != 1 || notes[0].Title != "Ideias" {
+		t.Fatalf("após delete esperava só 'Ideias', veio %+v", notes)
+	}
+}
+
+// Abrir um banco legado (tabela notes sem as colunas novas) e reabrir deve
+// migrar sem erro e preservar os dados — a migração é idempotente.
+func TestNotesMigrationIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+
+	// Simula um banco antigo: tabela notes só com as colunas originais.
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	_, err = legacy.Exec(`CREATE TABLE notes (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT NOT NULL,
+		content TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		t.Fatalf("create legacy notes: %v", err)
+	}
+	if _, err := legacy.Exec(`INSERT INTO notes (title, content) VALUES ('Velha', 'conteudo')`); err != nil {
+		t.Fatalf("insert legacy: %v", err)
+	}
+	legacy.Close()
+
+	// Primeira abertura migra; segunda abertura não deve falhar (idempotente).
+	for i := range 2 {
+		d, err := Open(path)
+		if err != nil {
+			t.Fatalf("Open #%d migrou com erro: %v", i, err)
+		}
+		notes, err := d.ListNotes()
+		if err != nil {
+			t.Fatalf("ListNotes #%d: %v", i, err)
+		}
+		if len(notes) != 1 || notes[0].Title != "Velha" || notes[0].Content != "conteudo" {
+			t.Fatalf("dados legados perdidos na migração: %+v", notes)
+		}
+		// As colunas novas existem e caem no default ("usar global").
+		if notes[0].LineLimit != 0 || notes[0].IntegrationMode != "" {
+			t.Fatalf("defaults de migração inesperados: %+v", notes[0])
+		}
+		d.Close()
 	}
 }
 

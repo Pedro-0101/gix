@@ -22,6 +22,18 @@ type Message struct {
 	Content string
 }
 
+// Note é uma anotação do usuário. LineLimit == 0 e IntegrationMode == ""
+// significam "usar o default global" (resolvido no serviço, não aqui).
+type Note struct {
+	ID              int64
+	Title           string
+	Content         string
+	LineLimit       int
+	IntegrationMode string
+	CreatedAt       string
+	UpdatedAt       string
+}
+
 type Database struct {
 	db *sql.DB
 }
@@ -49,7 +61,10 @@ func Open(path string) (*Database, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			line_limit INTEGER NOT NULL DEFAULT 0,
+			integration_mode TEXT NOT NULL DEFAULT '',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME
 		)`,
 		`CREATE TABLE IF NOT EXISTS conversations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +83,20 @@ func Open(path string) (*Database, error) {
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
+			return nil, err
+		}
+	}
+
+	// Migração de bancos legados: a tabela notes pode existir sem as colunas
+	// novas. ALTER TABLE ... ADD COLUMN num banco já migrado falha com
+	// "duplicate column name" — ignoramos esse caso para manter idempotência.
+	migrations := []string{
+		`ALTER TABLE notes ADD COLUMN line_limit INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE notes ADD COLUMN integration_mode TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE notes ADD COLUMN updated_at DATETIME`,
+	}
+	for _, m := range migrations {
+		if _, err := db.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, err
 		}
 	}
@@ -145,6 +174,61 @@ func (d *Database) GetMessages(convID int64) ([]Message, error) {
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+func (d *Database) CreateNote(title, content string, lineLimit int, mode string) (int64, error) {
+	res, err := d.db.Exec(
+		"INSERT INTO notes (title, content, line_limit, integration_mode) VALUES (?, ?, ?, ?)",
+		title, content, lineLimit, mode)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *Database) GetNote(id int64) (Note, error) {
+	var n Note
+	var updated sql.NullString
+	err := d.db.QueryRow(
+		"SELECT id, title, content, line_limit, integration_mode, created_at, updated_at FROM notes WHERE id = ?", id).
+		Scan(&n.ID, &n.Title, &n.Content, &n.LineLimit, &n.IntegrationMode, &n.CreatedAt, &updated)
+	if err != nil {
+		return Note{}, err
+	}
+	n.UpdatedAt = updated.String
+	return n, nil
+}
+
+func (d *Database) ListNotes() ([]Note, error) {
+	rows, err := d.db.Query(
+		"SELECT id, title, content, line_limit, integration_mode, created_at, updated_at FROM notes ORDER BY created_at DESC, id DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Note
+	for rows.Next() {
+		var n Note
+		var updated sql.NullString
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.LineLimit, &n.IntegrationMode, &n.CreatedAt, &updated); err != nil {
+			return nil, err
+		}
+		n.UpdatedAt = updated.String
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) UpdateNoteContent(id int64, content string) error {
+	_, err := d.db.Exec(
+		"UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", content, id)
+	return err
+}
+
+func (d *Database) DeleteNote(id int64) error {
+	_, err := d.db.Exec("DELETE FROM notes WHERE id = ?", id)
+	return err
 }
 
 func (d *Database) DeleteConversation(id int64) error {

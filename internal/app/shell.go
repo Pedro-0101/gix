@@ -32,6 +32,8 @@ func Run(assets fs.FS, trayIcon []byte) error {
 	}
 	chatSvc := NewChatService(cfgSvc, database, emit,
 		func(apiKey string) Streamer { return ai.New(apiKey) })
+	notesSvc := NewNotesService(cfgSvc, database,
+		func(apiKey string) Completer { return ai.New(apiKey) })
 
 	wailsApp = application.New(application.Options{
 		Name:        "gix",
@@ -40,6 +42,7 @@ func Run(assets fs.FS, trayIcon []byte) error {
 			application.NewService(cfgSvc),
 			application.NewService(histSvc),
 			application.NewService(chatSvc),
+			application.NewService(notesSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

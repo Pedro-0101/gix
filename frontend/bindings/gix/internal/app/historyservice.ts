@@ -3,7 +3,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -13,10 +13,20 @@ export function Delete(id: number): $CancellablePromise<void> {
     return $Call.ByID(2218961615, id);
 }
 
-export function List(): $CancellablePromise<db$0.Conversation[] | null> {
-    return $Call.ByID(1213690252);
+export function List(): $CancellablePromise<db$0.Conversation[]> {
+    return $Call.ByID(1213690252).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
-export function Messages(id: number): $CancellablePromise<db$0.Message[] | null> {
-    return $Call.ByID(1792130160, id);
+export function Messages(id: number): $CancellablePromise<db$0.Message[]> {
+    return $Call.ByID(1792130160, id).then(($result: any) => {
+        return $$createType3($result);
+    });
 }
+
+// Private type creation functions
+const $$createType0 = db$0.Conversation.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = db$0.Message.createFrom;
+const $$createType3 = $Create.Array($$createType2);

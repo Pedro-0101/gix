@@ -3,22 +3,28 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
 
 export function Current(): $CancellablePromise<config$0.Config | null> {
-    return $Call.ByID(1329622729);
+    return $Call.ByID(1329622729).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 export function Get(): $CancellablePromise<config$0.Config | null> {
-    return $Call.ByID(3478997624);
+    return $Call.ByID(3478997624).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
-export function Models(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(252474270);
+export function Models(): $CancellablePromise<string[]> {
+    return $Call.ByID(252474270).then(($result: any) => {
+        return $$createType2($result);
+    });
 }
 
 export function OnSave(fn: any): $CancellablePromise<void> {
@@ -28,3 +34,8 @@ export function OnSave(fn: any): $CancellablePromise<void> {
 export function Save(c: config$0.Config): $CancellablePromise<void> {
     return $Call.ByID(1493879465, c);
 }
+
+// Private type creation functions
+const $$createType0 = config$0.Config.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($Create.Any);

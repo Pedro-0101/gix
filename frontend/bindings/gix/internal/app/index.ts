@@ -4,8 +4,14 @@
 import * as ChatService from "./chatservice.js";
 import * as ConfigService from "./configservice.js";
 import * as HistoryService from "./historyservice.js";
+import * as NotesService from "./notesservice.js";
 export {
     ChatService,
     ConfigService,
-    HistoryService
+    HistoryService,
+    NotesService
 };
+
+export {
+    RouteResult
+} from "./models.js";

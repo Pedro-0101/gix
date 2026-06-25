@@ -7,8 +7,18 @@ features
 - Fazer atualizador remoto(por comando, notificar usuarios)
 - Adicionar área para comunicação do sistema com usuário
 - Adicionar interações com o sistema operacional
-- Iniciar sistema de organização de notas(ideia inicial core buisness)
-- Fazer mecanica para letras e palavras aparecerem aos poucos suavemente de forma continua
+
+notas (core business) - v1 do /note feita; futuro:
+- Tela de notas: lista + leitura das anotações
+- Editar notas manualmente
+- Configurar limite de linhas e modo de integração por nota (hoje só default global)
+- IA lê, analisa e reorganiza ou resume uma nota sob demanda (ex: /tidy)
+- IA usa as notas como base para responder perguntas do usuário sobre o que anotou
+- Lembretes de verdade (data due_at estruturada + notificação/agendamento, junto das interações com o SO)
+
+feito
+- Sistema de notas v1: /note <texto> com roteamento semântico por IA (anexar/criar), limite de linhas com escolha de overflow (resumir/parte 2/dividir por tema), data relativa resolvida para absoluta no texto
+- Mecanica para letras e palavras aparecerem aos poucos suavemente de forma continua (reveal)
 
 
 fixes

@@ -3,7 +3,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -14,19 +14,12 @@ import * as $models from "./models.js";
  * strategy: "summarize" | "part2" | "split".
  */
 export function ResolveOverflow(noteID: number, text: string, strategy: string): $CancellablePromise<$models.RouteResult> {
-    return $Call.ByID(1700925705, noteID, text, strategy).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(1700925705, noteID, text, strategy);
 }
 
 /**
  * Route decide o destino do texto e aplica a anotação. Ver RouteResult.
  */
 export function Route(text: string): $CancellablePromise<$models.RouteResult> {
-    return $Call.ByID(1350424422, text).then(($result: any) => {
-        return $$createType0($result);
-    });
+    return $Call.ByID(1350424422, text);
 }
-
-// Private type creation functions
-const $$createType0 = $models.RouteResult.createFrom;

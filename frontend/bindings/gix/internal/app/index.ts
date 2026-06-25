@@ -12,6 +12,6 @@ export {
     NotesService
 };
 
-export {
+export type {
     RouteResult
 } from "./models.js";

@@ -44,6 +44,50 @@ func TestStreamAccumulatesDeltas(t *testing.T) {
 	}
 }
 
+func TestCompleteReturnsContentAndUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer testkey" {
+			t.Errorf("auth header = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"choices":[{"message":{"role":"assistant","content":"{\"action\":\"create\"}"}}],
+			"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := New("testkey")
+	c.baseURL = srv.URL
+
+	content, usage, err := c.Complete(context.Background(), "m", []Message{{Role: "user", Content: "oi"}})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if content != `{"action":"create"}` {
+		t.Errorf("content = %q", content)
+	}
+	if usage == nil || usage.TotalTokens != 15 {
+		t.Errorf("usage = %+v", usage)
+	}
+}
+
+func TestCompleteErrorOnNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"chave invalida"}`))
+	}))
+	defer srv.Close()
+
+	c := New("ruim")
+	c.baseURL = srv.URL
+	if _, _, err := c.Complete(context.Background(), "m", []Message{{Role: "user", Content: "x"}}); err == nil {
+		t.Fatal("esperava erro, veio nil")
+	} else if !strings.Contains(err.Error(), "401") {
+		t.Errorf("erro deveria citar status 401: %v", err)
+	}
+}
+
 func TestStreamErrorOnNon2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

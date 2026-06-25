@@ -45,6 +45,54 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
+type completion struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Usage *Usage `json:"usage"`
+}
+
+// Complete faz uma chamada não-streaming (stream:false) e retorna o conteúdo
+// inteiro da primeira choice mais o Usage. Usado para respostas estruturadas
+// (JSON) como o roteamento de notas. Status != 2xx vira erro com o corpo.
+func (c *Client) Complete(ctx context.Context, model string, messages []Message) (string, *Usage, error) {
+	body, err := json.Marshal(chatRequest{Model: model, Messages: messages, Stream: false})
+	if err != nil {
+		return "", nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Title", "gix")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return "", nil, fmt.Errorf("openrouter: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+
+	var parsed completion
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return "", nil, err
+	}
+	var content string
+	if len(parsed.Choices) > 0 {
+		content = parsed.Choices[0].Message.Content
+	}
+	return content, parsed.Usage, nil
+}
+
 type streamChunk struct {
 	Choices []struct {
 		Delta struct {

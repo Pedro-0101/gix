@@ -3,6 +3,16 @@ import type { Choice } from './interaction'
 // The view the shell can show. Mirrors the `View` union in App.tsx.
 export type View = 'chat' | 'settings' | 'history'
 
+// The outcome of a note action, mirrored structurally from the Go RouteResult
+// (bindings). Kept as a local interface so commands stay decoupled from the
+// generated binding class.
+export interface NoteResult {
+  status: string
+  noteTitle: string
+  noteId: number
+  message: string
+}
+
 // CommandContext is the abstraction a command depends on (Dependency Inversion):
 // the only capabilities the shell exposes to commands. Commands never reach into
 // App's React state directly — they act through this surface, which keeps them
@@ -35,6 +45,12 @@ export interface CommandContext {
     // The valid model ids, for the `model` field's choices.
     models(): Promise<string[]>
   }
+  // Notes access: route a quick capture to a note, or resolve an overflowing
+  // note with a chosen strategy ('summarize' | 'part2' | 'split').
+  notes: {
+    route(text: string): Promise<NoteResult>
+    resolveOverflow(noteId: number, text: string, strategy: string): Promise<NoteResult>
+  }
 }
 
 // A single command. Adding one is the whole story: drop an object implementing
@@ -45,5 +61,6 @@ export interface Command {
   aliases?: string[]       // alternative slash-less names: ['ajuda']
   descriptionKey: string   // i18n key shown in the /help listing
   hidden?: boolean         // when true, omitted from /help
-  run(ctx: CommandContext): void | Promise<void>
+  acceptsArgs?: boolean    // when true, text after the name is passed as `arg`
+  run(ctx: CommandContext, arg?: string): void | Promise<void>
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Window } from '@wailsio/runtime'
 import { motion } from 'motion/react'
-import { ChatService, ConfigService } from '../bindings/gix/internal/app'
+import { ChatService, ConfigService, NotesService } from '../bindings/gix/internal/app'
 import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown } from './lib/events'
 import { MessageCard } from './components/MessageCard'
 import { ChoiceCard, ChoiceSummary } from './components/ChoiceCard'
@@ -253,6 +253,10 @@ export default function App() {
       },
       models: () => ConfigService.Models().then((m) => m ?? []),
     },
+    notes: {
+      route: (text) => NotesService.Route(text),
+      resolveOverflow: (noteId, text, strategy) => NotesService.ResolveOverflow(noteId, text, strategy),
+    },
   }
 
   // Finalize the active `choose`: record the pick as an inert message and resolve.
@@ -311,8 +315,8 @@ export default function App() {
     if (!text) return
     historyRef.current = recordPrompt(historyRef.current, text)
     savePromptHistory(historyRef.current)
-    const cmd = resolveCommand(text)
-    if (cmd) { cmd.run(commandContext); setInput(''); return }
+    const resolved = resolveCommand(text)
+    if (resolved) { resolved.cmd.run(commandContext, resolved.arg); setInput(''); return }
     setView('chat')
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '', pending: true }])
     setRevealKey((k) => k + 1)

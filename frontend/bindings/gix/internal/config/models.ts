@@ -17,4 +17,12 @@ export interface Config {
      * Higher is more opaque; the remainder lets the acrylic backdrop show through.
      */
     "opacity": number;
+
+    /**
+     * NotesLineLimit é o teto de linhas padrão de uma nota antes de o sistema
+     * oferecer resumo/divisão. NotesIntegrationMode escolhe como uma anotação
+     * entra na nota: "append" (cola a linha) ou "rewrite" (a IA reorganiza tudo).
+     */
+    "notes_line_limit": number;
+    "notes_integration_mode": string;
 }

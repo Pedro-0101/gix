@@ -57,6 +57,12 @@ export const CONFIG_FIELDS: FieldDef[] = [
   { key: 'close_interval_ms', labelKey: 'close_interval', kind: 'number', min: 100, max: 2000, step: 50, validate: positiveInt },
   { key: 'api_key', labelKey: 'api_key', kind: 'text' },
   { key: 'system_prompt', labelKey: 'system_prompt', kind: 'text' },
+  { key: 'notes_line_limit', labelKey: 'notes_line_limit', kind: 'number', min: 5, max: 200, step: 5, validate: positiveInt },
+  { key: 'notes_integration_mode', labelKey: 'notes_integration_mode', kind: 'enum',
+    choices: (e) => [
+      { label: tr(e.lang, 'notes_mode_append'), value: 'append' },
+      { label: tr(e.lang, 'notes_mode_rewrite'), value: 'rewrite' },
+    ] },
 ]
 
 // The first card's choices: one entry per field, labelled in the user's language.

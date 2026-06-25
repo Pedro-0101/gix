@@ -9,6 +9,7 @@ features
 - Adicionar interações com o sistema operacional
 
 notas (core business) - v1 do /note feita; futuro:
+- Afinar o roteamento: melhorar a decisão de anexar vs criar e a geração de títulos
 - Tela de notas: lista + leitura das anotações
 - Editar notas manualmente
 - Configurar limite de linhas e modo de integração por nota (hoje só default global)

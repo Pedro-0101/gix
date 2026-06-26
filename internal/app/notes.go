@@ -28,6 +28,15 @@ func NewNotesService(cfg *ConfigService, database *db.Database, newClient func(a
 	return &NotesService{cfg: cfg, db: database, newClient: newClient}
 }
 
+// List devolve todas as notas, mais recentes primeiro. Usada pela view de
+// leitura de notas no frontend (binding NotesService.List).
+func (s *NotesService) List() ([]db.Note, error) {
+	if s.db == nil {
+		return nil, nil
+	}
+	return s.db.ListNotes()
+}
+
 // RouteResult é o que o frontend recebe após um /note. Status:
 //   - "created"    nova nota criada
 //   - "appended"   item anexado a uma nota existente

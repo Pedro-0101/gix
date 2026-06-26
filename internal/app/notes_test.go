@@ -188,3 +188,37 @@ func TestExceedsLimit(t *testing.T) {
 		t.Error("limite 0 significa ilimitado")
 	}
 }
+
+func TestListReturnsNotesNewestFirst(t *testing.T) {
+	d := notesTestDB(t)
+	if _, err := d.CreateNote("Primeira", "- a", 0, "append"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := d.CreateNote("Segunda", "- b", 0, "append"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	svc := newNotesSvc(t, d, &fakeCompleter{})
+
+	notes, err := svc.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("esperava 2 notas, veio %d", len(notes))
+	}
+	if notes[0].Title != "Segunda" || notes[1].Title != "Primeira" {
+		t.Fatalf("ordem inesperada: %+v", notes)
+	}
+}
+
+func TestListEmptyReturnsNoError(t *testing.T) {
+	d := notesTestDB(t)
+	svc := newNotesSvc(t, d, &fakeCompleter{})
+	notes, err := svc.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(notes) != 0 {
+		t.Fatalf("esperava lista vazia, veio %+v", notes)
+	}
+}

@@ -3,5 +3,6 @@
 
 export type {
     Conversation,
-    Message
+    Message,
+    Note
 } from "./models.js";

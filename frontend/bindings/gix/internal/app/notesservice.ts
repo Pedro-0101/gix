@@ -7,7 +7,19 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as db$0 from "../db/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * List devolve todas as notas, mais recentes primeiro. Usada pela view de
+ * leitura de notas no frontend (binding NotesService.List).
+ */
+export function List(): $CancellablePromise<db$0.Note[] | null> {
+    return $Call.ByID(3779446313);
+}
 
 /**
  * ResolveOverflow executa a escolha do usuário quando uma nota estoura o limite.

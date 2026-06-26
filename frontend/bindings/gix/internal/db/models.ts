@@ -13,3 +13,17 @@ export interface Message {
     "Role": string;
     "Content": string;
 }
+
+/**
+ * Note é uma anotação do usuário. LineLimit == 0 e IntegrationMode == ""
+ * significam "usar o default global" (resolvido no serviço, não aqui).
+ */
+export interface Note {
+    "ID": number;
+    "Title": string;
+    "Content": string;
+    "LineLimit": number;
+    "IntegrationMode": string;
+    "CreatedAt": string;
+    "UpdatedAt": string;
+}

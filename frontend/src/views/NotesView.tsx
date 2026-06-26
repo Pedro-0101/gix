@@ -15,7 +15,7 @@ const DELETE_GRACE_MS = 5000
 // with Edit/Delete actions. Editing swaps in a full-screen NoteEditor; deleting
 // is deferred (undo via toast) so it's reversible until the grace period ends.
 // Esc closes via App's global handler; the back button calls onClose.
-export function NotesView({ lang, onClose }: { lang: string; onClose: () => void }) {
+export function NotesView({ lang, onClose, initialActiveId }: { lang: string; onClose: () => void; initialActiveId?: number | null }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -27,9 +27,14 @@ export function NotesView({ lang, onClose }: { lang: string; onClose: () => void
     NotesService.List().then((n) => {
       const list = n ?? []
       setNotes(list)
-      if (list.length > 0) setActiveId(list[0].ID)
+      if (list.length > 0) {
+        const targetId = initialActiveId && list.some((note) => note.ID === initialActiveId)
+          ? initialActiveId
+          : list[0].ID
+        setActiveId(targetId)
+      }
     })
-  }, [])
+  }, [initialActiveId])
 
   // One deferred-delete coordinator for the view's lifetime. commit performs the
   // real backend delete; onChange(null) hides the toast once it's committed.

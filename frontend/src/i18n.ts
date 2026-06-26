@@ -65,6 +65,7 @@ const pt: Record<string, string> = {
   editor_body_placeholder: 'escreva a nota…',
   editor_tag_placeholder: 'adicionar tag…',
   remove_tag: 'Remover tag',
+  cmd_graph_desc: 'Abre o mapa de notas (constelação)',
 }
 
 const en: Record<string, string> = {
@@ -134,6 +135,7 @@ const en: Record<string, string> = {
   editor_body_placeholder: 'write the note…',
   editor_tag_placeholder: 'add tag…',
   remove_tag: 'Remove tag',
+  cmd_graph_desc: 'Opens the note graph (constellation view)',
 }
 
 export function tr(lang: string, key: string): string {

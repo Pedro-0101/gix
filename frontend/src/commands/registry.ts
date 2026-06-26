@@ -7,6 +7,7 @@ import { noteCommand } from './builtins/note'
 import { notesCommand } from './builtins/notes'
 import { findCommand } from './builtins/find'
 import { askCommand } from './builtins/ask'
+import { graphCommand } from './builtins/graph'
 
 // The single source of truth. New commands — including future user-defined ones —
 // are added here (or pushed at runtime); the dispatcher and /help read this list,
@@ -20,6 +21,7 @@ export const commands: Command[] = [
   configCommand,
   historyCommand,
   helpCommand,
+  graphCommand,
 ]
 
 // Resolves raw bar input to a command plus its argument. A bare slash token

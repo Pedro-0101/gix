@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@wailsio/runtime": "latest",
+    "d3-force": "^3.0.0",
     "motion": "^12.41.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
+    "@types/d3-force": "^3.0.10",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^6.0.0",

@@ -11,6 +11,7 @@ import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
 import { NotesView } from './views/NotesView'
 import { SearchView } from './views/SearchView'
+import { GraphView } from './views/GraphView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
 import type { SearchState } from './commands/types'
 import { analyzeBar } from './commands/highlight'
@@ -19,7 +20,7 @@ import { emptyHistory, record as recordPrompt, prev as prevPrompt, next as nextP
 import { tr } from './i18n'
 import { useReveal } from './lib/reveal'
 
-type View = 'chat' | 'settings' | 'history' | 'notes' | 'search'
+type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph'
 type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean; instant?: boolean }
 type ChoiceMsg = { role: 'choice'; title: string; chosenLabel: string }
 type Msg = ChatMsg | ChoiceMsg
@@ -53,6 +54,7 @@ export default function App() {
   const [streaming, setStreaming] = useState(false)
   const [nonce, setNonce] = useState(0) // bumped on every window show to replay the enter animation
   const [revealKey, setRevealKey] = useState(0)
+  const [pendingNoteId, setPendingNoteId] = useState<number | null>(null)
   // The active interaction (options card or input prompt), or null. Its promise
   // resolver and the prompt validator live in refs (they don't affect render).
   const [interaction, setInteraction] = useState<Interaction | null>(null)
@@ -190,7 +192,7 @@ export default function App() {
       const double = now - last < 500
       last = now
       if (double) { ChatService.Cancel(); Window.Hide(); return }
-      if (view !== 'chat') setView('chat')
+      if (view !== 'chat') { setView('chat'); setPendingNoteId(null) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -447,8 +449,8 @@ export default function App() {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' || view === 'search' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-          style={view === 'history' || view === 'notes' || view === 'search' ? { height: panelMax } : { maxHeight: panelMax }}
+          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' || view === 'search' || view === 'graph' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+          style={view === 'history' || view === 'notes' || view === 'search' || view === 'graph' ? { height: panelMax } : { maxHeight: panelMax }}
         >
           {view === 'chat' && (
             <div className="space-y-3 px-3 py-3">
@@ -518,9 +520,10 @@ export default function App() {
             </div>
           )}
           {view === 'settings' && <SettingsView lang={lang} onClose={() => { loadCfg(); setView('chat') }} />}
-          {view === 'history' && <HistoryView lang={lang} onClose={() => setView('chat')} />}
-          {view === 'notes' && <NotesView lang={lang} onClose={() => setView('chat')} />}
+          {view === 'history' && <HistoryView lang={lang} onClose={() => { setView('chat'); setPendingNoteId(null) }} />}
+          {view === 'notes' && <NotesView lang={lang} onClose={() => { setView('chat'); setPendingNoteId(null) }} initialActiveId={pendingNoteId} />}
           {view === 'search' && searchState && <SearchView lang={lang} state={searchState} onClose={() => setView('chat')} />}
+          {view === 'graph' && <GraphView lang={lang} onClose={() => setView('chat')} onSelectNote={(id) => { setPendingNoteId(id); setView('notes') }} />}
         </motion.div>
       )}
     </motion.div>

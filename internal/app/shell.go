@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"gix/internal/ai"
 	"gix/internal/config"
@@ -50,6 +52,20 @@ func Run(assets fs.FS, trayIcon []byte) error {
 	notesSvc := NewNotesService(cfgSvc, database,
 		func(apiKey string) Completer { return ai.New(apiKey) })
 
+	notifSvc := notifications.New()
+
+	// showMain is defined below (it needs mainWin). The alerts scheduler calls it
+	// through this indirection so a fired alert can surface the overlay.
+	var showMainFn func()
+	onShow := func() {
+		if showMainFn != nil {
+			showMainFn()
+		}
+	}
+	alertsSvc := NewAlertsService(cfgSvc, database,
+		func(apiKey string) Completer { return ai.New(apiKey) },
+		emit, onShow, notifSvc)
+
 	// Load the embedding model in the background so the UI starts instantly. The
 	// model+tokenizer download on first run (progress is forwarded to the
 	// frontend); until it's ready, search falls back to full-text only.
@@ -75,6 +91,8 @@ func Run(assets fs.FS, trayIcon []byte) error {
 			application.NewService(histSvc),
 			application.NewService(chatSvc),
 			application.NewService(notesSvc),
+			application.NewService(notifSvc),
+			application.NewService(alertsSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -126,6 +144,32 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		emit("window:shown", nil)
 	}
 
+	showMainFn = showMain
+
+	// Toast action buttons + click handling.
+	alertsSvc.RegisterCategory()
+	notifSvc.OnNotificationResponse(func(result notifications.NotificationResult) {
+		if result.Error != nil {
+			return
+		}
+		resp := result.Response
+		var id int64
+		fmt.Sscanf(resp.ID, "%d", &id)
+		switch resp.ActionIdentifier {
+		case "snooze":
+			_ = alertsSvc.Snooze(id, 10)
+		case "done":
+			_ = alertsSvc.Done(id)
+		default: // DEFAULT_ACTION: user clicked the toast body
+			showMain()
+			emit("alert:open", map[string]any{"id": id})
+		}
+	})
+
+	// Scheduler goroutine; cancelled on app shutdown.
+	alertCtx, cancelAlerts := context.WithCancel(context.Background())
+	go alertsSvc.Run(alertCtx)
+
 	// Closing the window hides it (and cancels any in-flight stream) instead of quitting.
 	mainWin.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		chatSvc.Cancel()
@@ -149,6 +193,7 @@ func Run(assets fs.FS, trayIcon []byte) error {
 
 	err = wailsApp.Run()
 
+	cancelAlerts()
 	if database != nil {
 		database.Close()
 	}

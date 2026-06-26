@@ -6,6 +6,86 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../time/models.js";
+
+/**
+ * Alert is a reminder that fires at FireAt. NoteID is an optional weak link to
+ * the originating note. Recurrence is "" for one-shot, or the closed JSON rule
+ * (see internal/app/recurrence.go) for repeating alerts. Status is
+ * pending|done|cancelled. FireAt is stored in UTC.
+ */
+export class Alert {
+    /**
+     * Creates a new Alert instance.
+     * @param {Partial<Alert>} [$$source = {}] - The source object to create the Alert.
+     */
+    constructor($$source = {}) {
+        if (!("ID" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["ID"] = 0;
+        }
+        if (!("Message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Message"] = "";
+        }
+        if (!("NoteID" in $$source)) {
+            /**
+             * @member
+             * @type {number | null}
+             */
+            this["NoteID"] = null;
+        }
+        if (!("FireAt" in $$source)) {
+            /**
+             * @member
+             * @type {time$0.Time}
+             */
+            this["FireAt"] = null;
+        }
+        if (!("Recurrence" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Recurrence"] = "";
+        }
+        if (!("Status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Status"] = "";
+        }
+        if (!("CreatedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["CreatedAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Alert instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Alert}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Alert(/** @type {Partial<Alert>} */($$parsedSource));
+    }
+}
+
 export class Conversation {
     /**
      * Creates a new Conversation instance.

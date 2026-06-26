@@ -158,6 +158,71 @@ export class CaptureResult {
 }
 
 /**
+ * CreateAlertResult is what the frontend gets after /alerta or "create from note".
+ * 
+ * 	"created"     alert stored
+ * 	"no_api_key"  the API key is missing
+ * 	"unparseable" the AI couldn't produce valid JSON / a valid time
+ * 	"past"        a one-shot time already in the past
+ * 	"error"       failure (e.g. DB)
+ */
+export class CreateAlertResult {
+    /**
+     * Creates a new CreateAlertResult instance.
+     * @param {Partial<CreateAlertResult>} [$$source = {}] - The source object to create the CreateAlertResult.
+     */
+    constructor($$source = {}) {
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("alertId" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["alertId"] = 0;
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("fireAtLocal" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["fireAtLocal"] = "";
+        }
+        if (!("recurrence" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["recurrence"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CreateAlertResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {CreateAlertResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new CreateAlertResult(/** @type {Partial<CreateAlertResult>} */($$parsedSource));
+    }
+}
+
+/**
  * GraphData is the full graph returned to the frontend.
  */
 export class GraphData {

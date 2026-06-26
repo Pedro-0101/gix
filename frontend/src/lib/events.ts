@@ -18,3 +18,13 @@ export const onChatError = (cb: (msg: string) => void) =>
 // Fired by Go each time the window is shown via hotkey/tray — reset to the bar.
 export const onWindowShown = (cb: () => void) =>
   Events.On('window:shown', () => cb())
+
+export type AlertFiredPayload = { id: number; message: string; noteId: number | null }
+
+// Fired by Go when an alert's time arrives — show a card if the overlay is open.
+export const onAlertFired = (cb: (a: AlertFiredPayload) => void) =>
+  Events.On('alert:fired', (e) => cb(e.data as AlertFiredPayload))
+
+// Fired when the user clicks a toast body — open the alerts view focused on it.
+export const onAlertOpen = (cb: (id: number) => void) =>
+  Events.On('alert:open', (e) => cb((e.data as { id: number }).id))

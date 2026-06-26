@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Window } from '@wailsio/runtime'
 import { motion } from 'motion/react'
-import { ChatService, ConfigService, NotesService } from '../bindings/gix/internal/app'
+import { AlertsService, ChatService, ConfigService, NotesService } from '../bindings/gix/internal/app'
 import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown } from './lib/events'
 import { MessageCard } from './components/MessageCard'
 import { ChoiceCard, ChoiceSummary } from './components/ChoiceCard'
@@ -20,7 +20,7 @@ import { emptyHistory, record as recordPrompt, prev as prevPrompt, next as nextP
 import { tr } from './i18n'
 import { useReveal } from './lib/reveal'
 
-type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph'
+type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph' | 'alerts'
 type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean; instant?: boolean }
 type ChoiceMsg = { role: 'choice'; title: string; chosenLabel: string }
 type Msg = ChatMsg | ChoiceMsg
@@ -265,6 +265,9 @@ export default function App() {
       ask: (query) => NotesService.Ask(query) as any,
     },
     openSearch: (state) => { setSearchState(state); setView('search') },
+    alerts: {
+      create: (text) => AlertsService.Create(text) as any,
+    },
   }
 
   // Finalize the active `choose`: record the pick as an inert message and resolve.

@@ -1,7 +1,7 @@
 import type { Choice } from './interaction'
 
 // The view the shell can show. Mirrors the `View` union in App.tsx.
-export type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph'
+export type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph' | 'alerts'
 
 // Outcomes of the note actions, mirrored structurally from the Go results
 // (bindings). Kept as local interfaces so commands stay decoupled from the
@@ -12,6 +12,15 @@ export interface CaptureResult {
   noteTitle: string
   tags: string[]
   message: string
+}
+
+// Outcome of creating an alert (Go app.CreateAlertResult).
+export interface CreateAlertResult {
+  status: string
+  alertId: number
+  message: string
+  fireAtLocal: string
+  recurrence: string
 }
 
 // One ranked search hit (Go app.SearchResult).
@@ -86,6 +95,11 @@ export interface CommandContext {
   }
   // Opens the search view with the given state (loading, then results).
   openSearch(state: SearchState): void
+  // Alerts access: create a reminder from natural-language text (the backend
+  // calls the AI to parse the date/recurrence).
+  alerts: {
+    create(text: string): Promise<CreateAlertResult>
+  }
 }
 
 // A single command. Adding one is the whole story: drop an object implementing

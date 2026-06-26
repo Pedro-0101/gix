@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { Window } from '@wailsio/runtime'
 import { motion } from 'motion/react'
 import { AlertsService, ChatService, ConfigService, NotesService } from '../bindings/gix/internal/app'
-import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown } from './lib/events'
+import { onChatDelta, onChatDone, onChatError, onChatUsage, onWindowShown, onAlertFired, onAlertOpen } from './lib/events'
 import { MessageCard } from './components/MessageCard'
 import { ChoiceCard, ChoiceSummary } from './components/ChoiceCard'
 import { Slider } from './components/Slider'
@@ -12,6 +12,7 @@ import { HistoryView } from './views/HistoryView'
 import { NotesView } from './views/NotesView'
 import { SearchView } from './views/SearchView'
 import { GraphView } from './views/GraphView'
+import { AlertsView } from './views/AlertsView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
 import type { SearchState } from './commands/types'
 import { analyzeBar } from './commands/highlight'
@@ -45,6 +46,7 @@ const savePromptHistory = (h: PromptHistory) => {
 export default function App() {
   const [view, setView] = useState<View>('chat')
   const [searchState, setSearchState] = useState<SearchState | null>(null)
+  const [alertFocusId, setAlertFocusId] = useState<number | null>(null)
   const [lang, setLang] = useState('pt')
   const [theme, setTheme] = useState('light')
   const [opacity, setOpacity] = useState(85) // background frost strength, 0–100
@@ -151,6 +153,17 @@ export default function App() {
     })
     const offUsage = onChatUsage((u) => setUsage(u))
     return () => { offDelta(); offDone(); offErr(); offUsage() }
+  }, [lang])
+
+  // Live alert wiring: a fired alert posts a system card; clicking a toast body
+  // (alert:open) jumps to the alerts view focused on that alert.
+  useEffect(() => {
+    const offFired = onAlertFired((a) => {
+      setView('chat')
+      setMsgs((m) => [...m, { role: 'system', content: `${tr(lang, 'alert_created')} **${a.message}**` }])
+    })
+    const offOpen = onAlertOpen((id) => { setAlertFocusId(id); setView('alerts') })
+    return () => { offFired(); offOpen() }
   }, [lang])
 
   // Each time the window is shown, reset to a clean bar and focus it.
@@ -452,8 +465,8 @@ export default function App() {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' || view === 'search' || view === 'graph' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-          style={view === 'history' || view === 'notes' || view === 'search' || view === 'graph' ? { height: panelMax } : { maxHeight: panelMax }}
+          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' || view === 'search' || view === 'graph' || view === 'alerts' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+          style={view === 'history' || view === 'notes' || view === 'search' || view === 'graph' || view === 'alerts' ? { height: panelMax } : { maxHeight: panelMax }}
         >
           {view === 'chat' && (
             <div className="space-y-3 px-3 py-3">
@@ -527,6 +540,7 @@ export default function App() {
           {view === 'notes' && <NotesView lang={lang} onClose={() => { setView('chat'); setPendingNoteId(null) }} initialActiveId={pendingNoteId} />}
           {view === 'search' && searchState && <SearchView lang={lang} state={searchState} onClose={() => setView('chat')} />}
           {view === 'graph' && <GraphView lang={lang} onClose={() => setView('chat')} onSelectNote={(id) => { setPendingNoteId(id); setView('notes') }} />}
+          {view === 'alerts' && <AlertsView lang={lang} focusId={alertFocusId} onClose={() => { setAlertFocusId(null); setView('chat') }} />}
         </motion.div>
       )}
     </motion.div>

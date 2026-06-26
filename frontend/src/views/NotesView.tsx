@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { NotesService } from '../../bindings/gix/internal/app'
+import { AlertsService, NotesService } from '../../bindings/gix/internal/app'
 import type { Note } from '../../bindings/gix/internal/db'
 import { Markdown } from '../components/Markdown'
 import { Button } from '../components/Button'
@@ -21,6 +21,10 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
   const [editingId, setEditingId] = useState<number | null>(null)
   // The note awaiting deletion (kept so undo can restore it at its old spot).
   const [pendingDelete, setPendingDelete] = useState<{ note: Note; index: number } | null>(null)
+  // When non-null, the detail pane shows a small "when?" input to schedule an
+  // alert for the selected note.
+  const [alertFor, setAlertFor] = useState<number | null>(null)
+  const [whenText, setWhenText] = useState('')
   const activeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -66,6 +70,19 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
     return () => window.removeEventListener('keydown', onKey, true)
   }, [notes, activeId, editingId])
 
+  // `a` on the selected note opens the alert when-input (disabled while editing
+  // or while the input is already open, so typing "a" there isn't intercepted).
+  useEffect(() => {
+    if (editingId !== null || alertFor !== null || activeId === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'a') return
+      e.preventDefault(); e.stopPropagation()
+      setAlertFor(activeId); setWhenText('')
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [activeId, editingId, alertFor])
+
   // Mantém a nota selecionada visível ao navegar pelo teclado.
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest' })
@@ -92,6 +109,13 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
     }
     setPendingDelete({ note, index })
     ddRef.current?.schedule(note.ID)
+  }
+
+  const submitAlert = async () => {
+    if (alertFor === null) return
+    const text = whenText.trim()
+    if (text) await AlertsService.CreateForNote(alertFor, text)
+    setAlertFor(null); setWhenText('')
   }
 
   const handleUndo = () => {
@@ -163,6 +187,14 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
         {active && (
           <>
             <div className="flex shrink-0 justify-end gap-1 p-2">
+              <Button variant="ghost" onClick={() => { setAlertFor(active.ID); setWhenText('') }} className="gap-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round" className="size-4">
+                  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+                </svg>
+                {tr(lang, 'alert_from_note')}
+              </Button>
               <Button variant="ghost" onClick={() => setEditingId(active.ID)} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round" className="size-4">
@@ -179,6 +211,21 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
                 {tr(lang, 'delete')}
               </Button>
             </div>
+            {alertFor === active.ID && (
+              <div className="shrink-0 px-4 pb-2">
+                <input
+                  autoFocus
+                  value={whenText}
+                  onChange={(e) => setWhenText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); submitAlert() }
+                    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setAlertFor(null) }
+                  }}
+                  placeholder={tr(lang, 'alert_when_placeholder')}
+                  className="w-full rounded-field bg-surface px-2.5 py-1.5 text-sm outline-none placeholder:text-muted/70"
+                />
+              </div>
+            )}
             <article className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 selectable">
               <h1 className="mb-3 font-mono text-base font-bold text-fg">{active.Title}</h1>
               <Markdown>{active.Content}</Markdown>

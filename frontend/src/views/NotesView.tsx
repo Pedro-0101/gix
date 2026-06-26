@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { NotesService } from '../../bindings/gix/internal/app'
+import type { Note } from '../../bindings/gix/internal/db'
 import { MessageCard } from '../components/MessageCard'
 import { Button } from '../components/Button'
 import { tr } from '../i18n'
@@ -9,8 +10,8 @@ import { tr } from '../i18n'
 // the right. Mirrors HistoryView's master-detail layout. Esc closes via App's
 // global handler; the back button calls onClose.
 export function NotesView({ lang, onClose }: { lang: string; onClose: () => void }) {
-  const [notes, setNotes] = useState<any[]>([])
-  const [activeId, setActiveId] = useState<any>(null)
+  const [notes, setNotes] = useState<Note[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
 
   useEffect(() => {
     NotesService.List().then((n) => {

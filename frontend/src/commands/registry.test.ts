@@ -8,6 +8,7 @@ const list: Command[] = [
   { name: 'config', aliases: ['configuracoes', 'settings'], descriptionKey: 'd', run: () => {} },
   { name: 'new', descriptionKey: 'd', run: () => {} },
   { name: 'note', aliases: ['nota', 'n'], descriptionKey: 'd', acceptsArgs: true, run: () => {} },
+  { name: 'notes', aliases: ['notas'], descriptionKey: 'd', run: () => {} },
 ]
 
 describe('resolveCommand', () => {
@@ -43,6 +44,11 @@ describe('resolveCommand', () => {
   it('resolves an acceptsArgs command by alias with arg', () => {
     expect(resolveCommand('/n algo', list)?.cmd.name).toBe('note')
     expect(resolveCommand('/nota algo', list)?.arg).toBe('algo')
+  })
+
+  it('resolves the notes view command and its alias', () => {
+    expect(resolveCommand('/notes', list)?.cmd.name).toBe('notes')
+    expect(resolveCommand('/notas', list)?.cmd.name).toBe('notes')
   })
 
   it('allows a bare acceptsArgs command with empty arg', () => {

@@ -13,6 +13,7 @@ function mockCtx(opts: {
   const emitted: string[] = []
   const ctx = {
     lang: 'pt',
+    setView: vi.fn(),
     emitSystemMessage: (m: string) => emitted.push(m),
     choose: vi.fn(async () => opts.chooseValue ?? null),
     notes: {
@@ -24,10 +25,10 @@ function mockCtx(opts: {
 }
 
 describe('noteCommand', () => {
-  it('shows a usage hint on empty argument and does not call the backend', async () => {
-    const { ctx, emitted, ctxAny } = mockCtx({})
+  it('opens the notes view on empty argument and does not call the backend', async () => {
+    const { ctx, ctxAny } = mockCtx({})
     await noteCommand.run(ctx, '   ')
-    expect(emitted[0]).toContain('/note')
+    expect(ctxAny.setView).toHaveBeenCalledWith('notes')
     expect(ctxAny.notes.route).not.toHaveBeenCalled()
   })
 

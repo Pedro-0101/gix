@@ -4,6 +4,7 @@ import { configCommand } from './builtins/config'
 import { historyCommand } from './builtins/history'
 import { helpCommand } from './builtins/help'
 import { noteCommand } from './builtins/note'
+import { notesCommand } from './builtins/notes'
 
 // The single source of truth. New commands — including future user-defined ones —
 // are added here (or pushed at runtime); the dispatcher and /help read this list,
@@ -11,6 +12,7 @@ import { noteCommand } from './builtins/note'
 export const commands: Command[] = [
   newCommand,
   noteCommand,
+  notesCommand,
   configCommand,
   historyCommand,
   helpCommand,

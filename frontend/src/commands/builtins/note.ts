@@ -12,7 +12,7 @@ export const noteCommand: Command = {
   run: async (ctx, arg) => {
     const text = (arg ?? '').trim()
     if (!text) {
-      ctx.emitSystemMessage(tr(ctx.lang, 'note_usage'))
+      ctx.setView('notes')
       return
     }
 

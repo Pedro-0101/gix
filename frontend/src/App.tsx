@@ -9,6 +9,7 @@ import { Slider } from './components/Slider'
 import { frostColor } from './lib/frost'
 import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
+import { NotesView } from './views/NotesView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
 import { analyzeBar } from './commands/highlight'
 import { moveSelection, type Interaction } from './commands/interaction'
@@ -16,7 +17,7 @@ import { emptyHistory, record as recordPrompt, prev as prevPrompt, next as nextP
 import { tr } from './i18n'
 import { useReveal } from './lib/reveal'
 
-type View = 'chat' | 'settings' | 'history'
+type View = 'chat' | 'settings' | 'history' | 'notes'
 type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean; instant?: boolean }
 type ChoiceMsg = { role: 'choice'; title: string; chosenLabel: string }
 type Msg = ChatMsg | ChoiceMsg
@@ -441,8 +442,8 @@ export default function App() {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-          style={view === 'history' ? { height: panelMax } : { maxHeight: panelMax }}
+          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+          style={view === 'history' || view === 'notes' ? { height: panelMax } : { maxHeight: panelMax }}
         >
           {view === 'chat' && (
             <div className="space-y-3 px-3 py-3">
@@ -513,6 +514,7 @@ export default function App() {
           )}
           {view === 'settings' && <SettingsView lang={lang} onClose={() => { loadCfg(); setView('chat') }} />}
           {view === 'history' && <HistoryView lang={lang} onClose={() => setView('chat')} />}
+          {view === 'notes' && <NotesView lang={lang} onClose={() => setView('chat')} />}
         </motion.div>
       )}
     </motion.div>

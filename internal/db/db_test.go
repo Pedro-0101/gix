@@ -161,6 +161,59 @@ func TestDeleteNoteRemovesEverything(t *testing.T) {
 	}
 }
 
+func TestUpdateNotePreservesIdentityAndReindexes(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := d.CreateNote("Carro", "motor com barulho", []string{"carro"}, []byte{1, 2, 3, 4}, 1)
+	before, _ := d.GetNote(id)
+
+	if err := d.UpdateNote(id, "Bicicleta", "pneu furado da bicicleta", []string{"bike", "lazer"}, []byte{5, 6, 7, 8}, 1); err != nil {
+		t.Fatalf("UpdateNote: %v", err)
+	}
+
+	n, err := d.GetNote(id)
+	if err != nil {
+		t.Fatalf("GetNote: %v", err)
+	}
+	if n.ID != id {
+		t.Fatalf("id changed: %d -> %d", id, n.ID)
+	}
+	if n.CreatedAt != before.CreatedAt {
+		t.Fatalf("created_at changed: %q -> %q", before.CreatedAt, n.CreatedAt)
+	}
+	if n.Title != "Bicicleta" || n.Content != "pneu furado da bicicleta" {
+		t.Fatalf("title/content not updated: %+v", n)
+	}
+	if len(n.Tags) != 2 || n.Tags[0] != "bike" || n.Tags[1] != "lazer" {
+		t.Fatalf("tags not replaced: %v", n.Tags)
+	}
+
+	// FTS reflects the new text: old term gone, new term found.
+	if hits, _ := d.SearchFTS("motor", 10); len(hits) != 0 {
+		t.Fatalf("old fts term still matches: %+v", hits)
+	}
+	if hits, _ := d.SearchFTS("bicicleta", 10); len(hits) != 1 || hits[0].NoteID != id {
+		t.Fatalf("new fts term not found: %+v", hits)
+	}
+
+	// Vector replaced.
+	vecs, _ := d.AllVectors()
+	if len(vecs) != 1 || string(vecs[0].Vec) != string([]byte{5, 6, 7, 8}) {
+		t.Fatalf("vector not replaced: %+v", vecs)
+	}
+}
+
+func TestUpdateNoteClearsVectorWhenEmpty(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := d.CreateNote("A", "x", nil, []byte{1, 2, 3, 4}, 1)
+
+	if err := d.UpdateNote(id, "A", "x editado", nil, nil, 0); err != nil {
+		t.Fatalf("UpdateNote: %v", err)
+	}
+	if vecs, _ := d.AllVectors(); len(vecs) != 0 {
+		t.Fatalf("expected no vector after empty update, got %+v", vecs)
+	}
+}
+
 func TestExtractTitle(t *testing.T) {
 	cases := map[string]string{
 		"Olá mundo":                 "Olá mundo",

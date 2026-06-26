@@ -52,6 +52,19 @@ const pt: Record<string, string> = {
   search_searching: 'Buscando…',
   search_empty: 'Nenhuma nota encontrada.',
   ask_summary: 'Resumo',
+  edit: 'Editar',
+  delete: 'Excluir',
+  note_deleted: 'Nota excluída',
+  undo: 'Desfazer',
+  discard_changes: 'Descartar alterações não salvas?',
+  discard: 'Descartar',
+  keep_editing: 'Continuar editando',
+  editor_title: 'Título',
+  editor_tags: 'Tags',
+  editor_title_placeholder: 'título da nota…',
+  editor_body_placeholder: 'escreva a nota…',
+  editor_tag_placeholder: 'adicionar tag…',
+  remove_tag: 'Remover tag',
 }
 
 const en: Record<string, string> = {
@@ -108,6 +121,19 @@ const en: Record<string, string> = {
   search_searching: 'Searching…',
   search_empty: 'No notes found.',
   ask_summary: 'Summary',
+  edit: 'Edit',
+  delete: 'Delete',
+  note_deleted: 'Note deleted',
+  undo: 'Undo',
+  discard_changes: 'Discard unsaved changes?',
+  discard: 'Discard',
+  keep_editing: 'Keep editing',
+  editor_title: 'Title',
+  editor_tags: 'Tags',
+  editor_title_placeholder: 'note title…',
+  editor_body_placeholder: 'write the note…',
+  editor_tag_placeholder: 'add tag…',
+  remove_tag: 'Remove tag',
 }
 
 export function tr(lang: string, key: string): string {

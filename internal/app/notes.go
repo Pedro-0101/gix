@@ -141,6 +141,47 @@ func (s *NotesService) Capture(text string) (CaptureResult, error) {
 	return CaptureResult{Status: "created", NoteID: id, NoteTitle: title, Tags: tags, Tokens: tokens, Cost: cost}, nil
 }
 
+// --- update / delete ---
+
+// Update replaces a note's title, content and tags exactly as the user typed
+// them — no AI, no cost. The text is re-embedded locally (free) when the model
+// is loaded so semantic search stays in sync; otherwise the note keeps no vector
+// and degrades to full-text. Tags are normalized but uncapped (manual edit).
+// Returns the updated note for the UI to re-render.
+func (s *NotesService) Update(id int64, title, content string, tags []string) (db.Note, error) {
+	if s.db == nil {
+		return db.Note{}, fmt.Errorf("no_db")
+	}
+	content = strings.TrimSpace(content)
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = db.ExtractTitle(content)
+	}
+	normTags := normalizeTagsUncapped(tags)
+
+	var vec []byte
+	dim := 0
+	if s.embedder != nil {
+		if v, eerr := s.embedder.EmbedDoc(title + "\n" + content); eerr == nil {
+			vec = embed.EncodeVector(v)
+			dim = len(v)
+		}
+	}
+
+	if err := s.db.UpdateNote(id, title, content, normTags, vec, dim); err != nil {
+		return db.Note{}, err
+	}
+	return s.db.GetNote(id)
+}
+
+// Delete removes a note and all of its derived rows (tags, vector, FTS).
+func (s *NotesService) Delete(id int64) error {
+	if s.db == nil {
+		return fmt.Errorf("no_db")
+	}
+	return s.db.DeleteNote(id)
+}
+
 // --- search ---
 
 // SearchResult is one ranked note for /find and /ask. Content is included so the
@@ -341,8 +382,9 @@ func snippet(content string) string {
 	return flat
 }
 
-// normalizeTags trims, lowercases, drops empties and de-dupes, capping at 5.
-func normalizeTags(tags []string) []string {
+// normalizeTagsUncapped trims, lowercases, drops empties and de-dupes, with no
+// limit on count. Used for manual edits, where the user is in control.
+func normalizeTagsUncapped(tags []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, t := range tags {
@@ -352,9 +394,16 @@ func normalizeTags(tags []string) []string {
 		}
 		seen[t] = true
 		out = append(out, t)
-		if len(out) == 5 {
-			break
-		}
+	}
+	return out
+}
+
+// normalizeTags is normalizeTagsUncapped capped at 5. Used for AI capture, where
+// the model can over-tag.
+func normalizeTags(tags []string) []string {
+	out := normalizeTagsUncapped(tags)
+	if len(out) > 5 {
+		out = out[:5]
 	}
 	return out
 }

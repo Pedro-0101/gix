@@ -258,6 +258,101 @@ func TestNormalizeTags(t *testing.T) {
 	}
 }
 
+func TestNormalizeTagsUncappedKeepsMoreThanFive(t *testing.T) {
+	got := normalizeTagsUncapped([]string{"#A", "a", " B ", "c", "d", "e", "f", "g"})
+	want := []string{"a", "b", "c", "d", "e", "f", "g"} // de-duped, lowercased, no cap
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("normalizeTagsUncapped = %v, want %v", got, want)
+	}
+}
+
+func TestUpdateReindexesAndDoesNotCallAI(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Carro", "motor do carro com barulho", "carro")
+	fake := &fakeCompleter{responses: []string{"should not be called"}}
+	svc := newNotesSvc(t, d, fake)
+
+	// Update to a market-themed note: title+content change, tags change.
+	n, err := svc.Update(id, "Mercado", "comprei pão e leite no mercado", []string{"compras", "casa"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Update must not call the AI, called %d", fake.calls)
+	}
+	if n.ID != id || n.Title != "Mercado" || n.Content != "comprei pão e leite no mercado" {
+		t.Fatalf("unexpected updated note: %+v", n)
+	}
+	if len(n.Tags) != 2 || n.Tags[0] != "compras" || n.Tags[1] != "casa" {
+		t.Fatalf("tags not updated/normalized: %v", n.Tags)
+	}
+
+	// Re-embedded: the note now ranks for a market query and not for the old car term.
+	results, _ := svc.Find("mercado")
+	if len(results) != 1 || results[0].NoteID != id {
+		t.Fatalf("expected updated note found by new term: %+v", results)
+	}
+}
+
+func TestUpdateTagsUncapped(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "A", "x", "old")
+	svc := newNotesSvc(t, d, &fakeCompleter{})
+
+	n, err := svc.Update(id, "A", "x", []string{"a", "b", "c", "d", "e", "f", "g"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(n.Tags) != 7 {
+		t.Fatalf("manual edit should not cap tags, got %v", n.Tags)
+	}
+}
+
+func TestUpdateFallbackTitleWhenEmpty(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Original", "conteúdo")
+	svc := newNotesSvc(t, d, &fakeCompleter{})
+
+	n, err := svc.Update(id, "   ", "primeira linha\nsegunda", nil)
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if n.Title != "primeira linha" {
+		t.Fatalf("expected title derived from content, got %q", n.Title)
+	}
+}
+
+func TestUpdateWithoutEmbedderClearsVector(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Carro", "motor", "carro") // addNote stores a vector
+	// Service without an embedder: an update can't re-embed, so it stores none.
+	svc := NewNotesService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} })
+
+	if _, err := svc.Update(id, "Carro", "motor novo", []string{"carro"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if vecs, _ := d.AllVectors(); len(vecs) != 0 {
+		t.Fatalf("expected no vector without embedder, got %+v", vecs)
+	}
+}
+
+func TestDeleteRemovesNote(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Carro", "motor barulho", "carro")
+	svc := newNotesSvc(t, d, &fakeCompleter{})
+
+	if err := svc.Delete(id); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	notes, _ := svc.List()
+	if len(notes) != 0 {
+		t.Fatalf("expected no notes after delete, got %+v", notes)
+	}
+	if vecs, _ := d.AllVectors(); len(vecs) != 0 {
+		t.Fatalf("vector survived delete: %+v", vecs)
+	}
+}
+
 func TestSnippetSingleLineAndTruncates(t *testing.T) {
 	if s := snippet("uma\nnota\ncurta"); s != "uma nota curta" {
 		t.Fatalf("snippet flatten failed: %q", s)

@@ -163,6 +163,51 @@ func (d *Database) CreateNote(title, content string, tags []string, vec []byte, 
 	return id, nil
 }
 
+// UpdateNote replaces a note's title, content, tags and embedding in one
+// transaction, keeping note_tags, note_vectors and the FTS index in sync. The
+// note's id and created_at are preserved. vec is the embed-serialized vector
+// blob; dim its length in float32s. An empty vec leaves the note without one.
+func (d *Database) UpdateNote(id int64, title, content string, tags []string, vec []byte, dim int) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("UPDATE notes SET title = ?, content = ? WHERE id = ?", title, content, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec("DELETE FROM note_tags WHERE note_id = ?", id); err != nil {
+		return err
+	}
+	for _, tag := range tags {
+		if _, err := tx.Exec("INSERT INTO note_tags (note_id, tag) VALUES (?, ?)", id, tag); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec("DELETE FROM note_vectors WHERE note_id = ?", id); err != nil {
+		return err
+	}
+	if len(vec) > 0 {
+		if _, err := tx.Exec("INSERT INTO note_vectors (note_id, dim, vec) VALUES (?, ?, ?)", id, dim, vec); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec("DELETE FROM notes_fts WHERE rowid = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		"INSERT INTO notes_fts (rowid, title, content, tags) VALUES (?, ?, ?, ?)",
+		id, title, content, strings.Join(tags, " ")); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // GetNote returns one note with its tags.
 func (d *Database) GetNote(id int64) (Note, error) {
 	var n Note

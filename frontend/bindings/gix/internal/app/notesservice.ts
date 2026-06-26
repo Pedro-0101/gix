@@ -31,6 +31,13 @@ export function Capture(text: string): $CancellablePromise<$models.CaptureResult
 }
 
 /**
+ * Delete removes a note and all of its derived rows (tags, vector, FTS).
+ */
+export function Delete(id: number): $CancellablePromise<void> {
+    return $Call.ByID(2723240770, id);
+}
+
+/**
  * Find runs hybrid search (full-text + semantic, fused via RRF). No AI, no cost.
  */
 export function Find(query: string): $CancellablePromise<$models.SearchResult[] | null> {
@@ -42,4 +49,15 @@ export function Find(query: string): $CancellablePromise<$models.SearchResult[] 
  */
 export function List(): $CancellablePromise<db$0.Note[] | null> {
     return $Call.ByID(3779446313);
+}
+
+/**
+ * Update replaces a note's title, content and tags exactly as the user typed
+ * them — no AI, no cost. The text is re-embedded locally (free) when the model
+ * is loaded so semantic search stays in sync; otherwise the note keeps no vector
+ * and degrades to full-text. Tags are normalized but uncapped (manual edit).
+ * Returns the updated note for the UI to re-render.
+ */
+export function Update(id: number, title: string, content: string, tags: string[] | null): $CancellablePromise<db$0.Note> {
+    return $Call.ByID(579506140, id, title, content, tags);
 }

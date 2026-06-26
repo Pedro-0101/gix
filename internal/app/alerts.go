@@ -155,6 +155,133 @@ func (s *AlertsService) parseWhen(text, contextMessage string, now time.Time) (a
 	return dec, nil
 }
 
+// --- management (also called by the toast action buttons) ---
+
+// List returns alerts the manager shows: pending and done, fire_at ascending.
+func (s *AlertsService) List() ([]db.Alert, error) {
+	if s.db == nil {
+		return nil, nil
+	}
+	return s.db.ListAlerts("pending", "done")
+}
+
+// Cancel soft-cancels an alert (status=cancelled), stopping any recurrence.
+func (s *AlertsService) Cancel(id int64) error {
+	if s.db == nil {
+		return fmt.Errorf("no_db")
+	}
+	return s.db.SetAlertStatus(id, "cancelled")
+}
+
+// Snooze pushes an alert's fire_at forward by `minutes` and keeps it pending.
+func (s *AlertsService) Snooze(id int64, minutes int) error {
+	if s.db == nil {
+		return fmt.Errorf("no_db")
+	}
+	return s.db.UpdateAlertFireAt(id, time.Now().Add(time.Duration(minutes)*time.Minute))
+}
+
+// Done marks an alert done. For a one-shot it's the natural close (idempotent if
+// the scheduler already fired it). For a recurring alert it only dismisses the
+// current occurrence — the scheduler has already rescheduled the next fire_at,
+// so the series continues; cancel the recurrence via Cancel/DeleteAlert instead.
+func (s *AlertsService) Done(id int64) error {
+	if s.db == nil {
+		return fmt.Errorf("no_db")
+	}
+	a, err := s.db.GetAlert(id)
+	if err != nil {
+		return err
+	}
+	if a.Recurrence != "" {
+		return nil // recurring: no-op for scheduling
+	}
+	return s.db.SetAlertStatus(id, "done")
+}
+
+// --- scheduler ---
+
+// Run drives the polling loop: an immediate tick on boot (catches alerts that
+// came due while the app was closed), then every pollInterval until ctx is done.
+func (s *AlertsService) Run(ctx context.Context) {
+	s.tick(time.Now())
+	t := time.NewTicker(pollInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.tick(time.Now())
+		}
+	}
+}
+
+// tick fires every due alert once, then reschedules recurring ones to their next
+// future occurrence and marks one-shots done.
+func (s *AlertsService) tick(now time.Time) {
+	if s.db == nil {
+		return
+	}
+	due, err := s.db.DueAlerts(now)
+	if err != nil {
+		return
+	}
+	for _, a := range due {
+		s.dispatch(a)
+		if rule, ok := parseRecurrence(a.Recurrence); ok {
+			next := proximoFireAt(rule, a.FireAt.In(s.loc), now.In(s.loc))
+			_ = s.db.UpdateAlertFireAt(a.ID, next.UTC())
+			continue
+		}
+		_ = s.db.SetAlertStatus(a.ID, "done")
+	}
+}
+
+// dispatch notifies the user of one fired alert via two parallel paths so the
+// alert is never silently lost: always emit alert:fired (the overlay shows a
+// card if open), and send a native toast with action buttons. If the toast
+// can't be sent (e.g. `wails dev`, unsigned app, no permission), fall back to
+// showing the overlay window.
+func (s *AlertsService) dispatch(a db.Alert) {
+	if s.emit != nil {
+		s.emit("alert:fired", alertFiredPayload{ID: a.ID, Message: a.Message, NoteID: a.NoteID})
+	}
+	opts := notifications.NotificationOptions{
+		ID:         fmt.Sprintf("%d", a.ID),
+		Title:      a.Message,
+		Body:       a.FireAt.In(s.loc).Format("15:04"),
+		CategoryID: alertCategoryID,
+		Data:       map[string]interface{}{"id": a.ID},
+	}
+	if s.notifier == nil || s.notifier.SendNotificationWithActions(opts) != nil {
+		if s.onShow != nil {
+			s.onShow()
+		}
+	}
+}
+
+// RegisterCategory registers the toast action buttons. Called once at boot.
+func (s *AlertsService) RegisterCategory() {
+	if s.notifier == nil {
+		return
+	}
+	_ = s.notifier.RegisterNotificationCategory(notifications.NotificationCategory{
+		ID: alertCategoryID,
+		Actions: []notifications.NotificationAction{
+			{ID: "snooze", Title: "Adiar 10 min"},
+			{ID: "done", Title: "Concluir"},
+		},
+	})
+}
+
+// alertFiredPayload is the alert:fired event body the frontend consumes.
+type alertFiredPayload struct {
+	ID      int64  `json:"id"`
+	Message string `json:"message"`
+	NoteID  *int64 `json:"noteId"`
+}
+
 func buildAlertPrompt(text, contextMessage string, now time.Time, language string) []ai.Message {
 	zoneName, offsetSec := now.Zone()
 	offsetH := offsetSec / 3600

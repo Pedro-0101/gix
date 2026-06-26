@@ -1,11 +1,29 @@
 package app
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
+
 	"gix/internal/db"
 )
+
+type fakeNotifier struct {
+	sent       []notifications.NotificationOptions
+	sendErr    error
+	categories []notifications.NotificationCategory
+}
+
+func (f *fakeNotifier) SendNotificationWithActions(o notifications.NotificationOptions) error {
+	f.sent = append(f.sent, o)
+	return f.sendErr
+}
+func (f *fakeNotifier) RegisterNotificationCategory(c notifications.NotificationCategory) error {
+	f.categories = append(f.categories, c)
+	return nil
+}
 
 func newAlertsSvc(t *testing.T, d *db.Database, fake Completer) *AlertsService {
 	t.Helper()
@@ -128,4 +146,104 @@ func alertsTestDB(t *testing.T) *db.Database {
 	}
 	t.Cleanup(func() { d.Close() })
 	return d
+}
+
+func TestTickFiresOneShotAndMarksDone(t *testing.T) {
+	d := alertsTestDB(t)
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	id, _ := d.CreateAlert(db.Alert{Message: "remédio", FireAt: now.Add(-time.Minute)})
+
+	fn := &fakeNotifier{}
+	var fired []any
+	svc := NewAlertsService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} },
+		func(name string, data any) {
+			if name == "alert:fired" {
+				fired = append(fired, data)
+			}
+		}, nil, fn)
+	svc.loc = time.UTC
+
+	svc.tick(now)
+
+	if len(fn.sent) != 1 {
+		t.Fatalf("expected one toast, got %d", len(fn.sent))
+	}
+	if len(fired) != 1 {
+		t.Fatalf("expected one alert:fired event, got %d", len(fired))
+	}
+	got, _ := d.GetAlert(id)
+	if got.Status != "done" {
+		t.Fatalf("one-shot should be done after firing, got %q", got.Status)
+	}
+}
+
+func TestTickRecurringFiresOnceAndReschedulesFuture(t *testing.T) {
+	d := alertsTestDB(t)
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	// Daily alert last due 3 days ago: must fire exactly once and reschedule ahead.
+	id, _ := d.CreateAlert(db.Alert{
+		Message:    "academia",
+		FireAt:     now.AddDate(0, 0, -3).Truncate(time.Hour),
+		Recurrence: `{"freq":"daily","interval":1}`,
+	})
+
+	fn := &fakeNotifier{}
+	svc := NewAlertsService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} }, func(string, any) {}, nil, fn)
+	svc.loc = time.UTC
+
+	svc.tick(now)
+
+	if len(fn.sent) != 1 {
+		t.Fatalf("recurring catch-up must fire exactly once, got %d", len(fn.sent))
+	}
+	got, _ := d.GetAlert(id)
+	if got.Status != "pending" {
+		t.Fatalf("recurring alert should stay pending, got %q", got.Status)
+	}
+	if !got.FireAt.After(now) {
+		t.Fatalf("recurring alert should be rescheduled to the future, got %v", got.FireAt)
+	}
+}
+
+func TestDispatchFallsBackToOverlayOnToastError(t *testing.T) {
+	d := alertsTestDB(t)
+	shown := 0
+	fn := &fakeNotifier{sendErr: fmt.Errorf("toast unavailable")}
+	svc := NewAlertsService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} },
+		func(string, any) {}, func() { shown++ }, fn)
+	svc.loc = time.UTC
+
+	svc.dispatch(db.Alert{ID: 1, Message: "x"})
+	if shown != 1 {
+		t.Fatalf("expected overlay fallback when toast fails, shown=%d", shown)
+	}
+}
+
+func TestSnoozeDoneCancel(t *testing.T) {
+	d := alertsTestDB(t)
+	now := time.Now().UTC()
+	id, _ := d.CreateAlert(db.Alert{Message: "x", FireAt: now.Add(time.Hour)})
+	svc := NewAlertsService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} }, func(string, any) {}, nil, nil)
+	svc.loc = time.UTC
+
+	if err := svc.Snooze(id, 10); err != nil {
+		t.Fatalf("Snooze: %v", err)
+	}
+	a, _ := d.GetAlert(id)
+	if a.Status != "pending" || !a.FireAt.After(now.Add(9*time.Minute)) {
+		t.Fatalf("snooze should push fire_at ~10min and keep pending: %+v", a)
+	}
+	if err := svc.Done(id); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	if a, _ := d.GetAlert(id); a.Status != "done" {
+		t.Fatalf("Done should set status done, got %q", a.Status)
+	}
+	id2, _ := d.CreateAlert(db.Alert{Message: "y", FireAt: now.Add(time.Hour)})
+	if err := svc.Cancel(id2); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if a, _ := d.GetAlert(id2); a.Status != "cancelled" {
+		t.Fatalf("Cancel should set status cancelled, got %q", a.Status)
+	}
 }

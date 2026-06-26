@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -439,7 +440,11 @@ func scanAlert(s interface{ Scan(...any) error }) (Alert, error) {
 	if err := s.Scan(&a.ID, &a.Message, &a.NoteID, &fireAt, &a.Recurrence, &a.Status, &a.CreatedAt); err != nil {
 		return Alert{}, err
 	}
-	a.FireAt, _ = time.Parse(alertTimeLayout, fireAt)
+	t, err := time.Parse(alertTimeLayout, fireAt)
+	if err != nil {
+		return Alert{}, fmt.Errorf("scanAlert: fire_at %q: %w", fireAt, err)
+	}
+	a.FireAt = t
 	return a, nil
 }
 

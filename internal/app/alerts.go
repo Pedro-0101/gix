@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -231,10 +232,14 @@ func (s *AlertsService) tick(now time.Time) {
 		s.dispatch(a)
 		if rule, ok := parseRecurrence(a.Recurrence); ok {
 			next := proximoFireAt(rule, a.FireAt.In(s.loc), now.In(s.loc))
-			_ = s.db.UpdateAlertFireAt(a.ID, next.UTC())
+			if err := s.db.UpdateAlertFireAt(a.ID, next.UTC()); err != nil {
+				log.Printf("alerts: reschedule %d: %v", a.ID, err)
+			}
 			continue
 		}
-		_ = s.db.SetAlertStatus(a.ID, "done")
+		if err := s.db.SetAlertStatus(a.ID, "done"); err != nil {
+			log.Printf("alerts: mark done %d: %v", a.ID, err)
+		}
 	}
 }
 

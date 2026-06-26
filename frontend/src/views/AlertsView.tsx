@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { AlertsService } from '../../bindings/gix/internal/app'
 import type { Alert } from '../../bindings/gix/internal/db'
@@ -16,14 +16,15 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
   const [showDone, setShowDone] = useState(false)
   const activeRef = useRef<HTMLButtonElement>(null)
 
-  const load = () =>
+  const load = useCallback(() => {
     AlertsService.List().then((a) => {
       const list = a ?? []
       setAlerts(list)
       setActiveId((cur) => cur ?? (focusId ?? (list.find((x) => x.Status === 'pending')?.ID ?? null)))
     })
+  }, [focusId])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
   useEffect(() => { if (focusId != null) setActiveId(focusId) }, [focusId])
 
   const pending = alerts.filter((a) => a.Status === 'pending')

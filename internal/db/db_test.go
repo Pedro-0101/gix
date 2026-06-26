@@ -3,6 +3,7 @@ package db
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func openTestDB(t *testing.T) *Database {
@@ -211,6 +212,73 @@ func TestUpdateNoteClearsVectorWhenEmpty(t *testing.T) {
 	}
 	if vecs, _ := d.AllVectors(); len(vecs) != 0 {
 		t.Fatalf("expected no vector after empty update, got %+v", vecs)
+	}
+}
+
+func ptr(i int64) *int64 { return &i }
+
+func TestAlertCRUDAndDue(t *testing.T) {
+	d := openTestDB(t)
+	base := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+
+	past := Alert{Message: "ligar pro médico", FireAt: base.Add(-time.Hour)}
+	pastID, err := d.CreateAlert(past)
+	if err != nil {
+		t.Fatalf("CreateAlert past: %v", err)
+	}
+	future := Alert{Message: "academia", NoteID: ptr(7), FireAt: base.Add(time.Hour), Recurrence: `{"freq":"weekly","interval":1}`}
+	futureID, err := d.CreateAlert(future)
+	if err != nil {
+		t.Fatalf("CreateAlert future: %v", err)
+	}
+
+	// GetAlert round-trips fields (fire_at compared at second precision).
+	got, err := d.GetAlert(futureID)
+	if err != nil {
+		t.Fatalf("GetAlert: %v", err)
+	}
+	if got.Message != "academia" || got.NoteID == nil || *got.NoteID != 7 || got.Status != "pending" {
+		t.Fatalf("unexpected alert: %+v", got)
+	}
+	if !got.FireAt.Equal(base.Add(time.Hour)) {
+		t.Fatalf("fire_at not preserved: %v want %v", got.FireAt, base.Add(time.Hour))
+	}
+
+	// DueAlerts returns only the past pending alert.
+	due, err := d.DueAlerts(base)
+	if err != nil {
+		t.Fatalf("DueAlerts: %v", err)
+	}
+	if len(due) != 1 || due[0].ID != pastID {
+		t.Fatalf("expected only the past alert due, got %+v", due)
+	}
+
+	// ListAlerts(pending) returns both, fire_at asc (past first).
+	pend, _ := d.ListAlerts("pending")
+	if len(pend) != 2 || pend[0].ID != pastID {
+		t.Fatalf("ListAlerts order wrong: %+v", pend)
+	}
+
+	// Reschedule the past one into the future; it leaves the due set.
+	if err := d.UpdateAlertFireAt(pastID, base.Add(48*time.Hour)); err != nil {
+		t.Fatalf("UpdateAlertFireAt: %v", err)
+	}
+	if due, _ := d.DueAlerts(base); len(due) != 0 {
+		t.Fatalf("expected nothing due after reschedule, got %+v", due)
+	}
+
+	// SetAlertStatus moves it out of pending; DeleteAlert removes it.
+	if err := d.SetAlertStatus(futureID, "done"); err != nil {
+		t.Fatalf("SetAlertStatus: %v", err)
+	}
+	if pend, _ := d.ListAlerts("pending"); len(pend) != 1 {
+		t.Fatalf("expected 1 pending after done, got %+v", pend)
+	}
+	if err := d.DeleteAlert(pastID); err != nil {
+		t.Fatalf("DeleteAlert: %v", err)
+	}
+	if all, _ := d.ListAlerts(); len(all) != 1 {
+		t.Fatalf("expected 1 alert after delete, got %+v", all)
 	}
 }
 

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { NotesService } from '../../bindings/gix/internal/app'
 import type { Note } from '../../bindings/gix/internal/db'
 import { MessageCard } from '../components/MessageCard'
 import { Button } from '../components/Button'
+import { moveSelection } from '../commands/interaction'
 import { tr } from '../i18n'
 
 // Read-only notes browser: title list on the left, selected note's markdown on
@@ -12,6 +13,7 @@ import { tr } from '../i18n'
 export function NotesView({ lang, onClose }: { lang: string; onClose: () => void }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
+  const activeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     NotesService.List().then((n) => {
@@ -20,6 +22,27 @@ export function NotesView({ lang, onClose }: { lang: string; onClose: () => void
       if (list.length > 0) setActiveId(list[0].ID)
     })
   }, [])
+
+  // ↑/↓ percorrem a lista (com wrap), espelhando a navegação do card de escolha.
+  // Captura para vencer o recall de histórico da barra, que também ouve as setas.
+  useEffect(() => {
+    if (notes.length === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      e.preventDefault()
+      e.stopPropagation()
+      const idx = notes.findIndex((n) => n.ID === activeId)
+      const next = moveSelection(notes.length, idx === -1 ? 0 : idx, e.key === 'ArrowDown' ? 1 : -1)
+      setActiveId(notes[next].ID)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [notes, activeId])
+
+  // Mantém a nota selecionada visível ao navegar pelo teclado.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [activeId])
 
   const active = notes.find((n) => n.ID === activeId)
 
@@ -53,6 +76,7 @@ export function NotesView({ lang, onClose }: { lang: string; onClose: () => void
                   }`}
                 >
                   <button
+                    ref={isActive ? activeRef : undefined}
                     onClick={() => setActiveId(n.ID)}
                     className="block w-full cursor-pointer truncate px-2.5 py-2 text-left text-sm outline-none"
                   >

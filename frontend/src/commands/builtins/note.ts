@@ -1,9 +1,8 @@
 import { tr } from '../../i18n'
 import type { Command } from '../types'
 
-// /note <texto>: captura rápida. O backend roteia (anexar/criar) e devolve um
-// status; quando a nota alvo está cheia, oferecemos as estratégias de overflow
-// via card de escolha e delegamos a resolução de volta ao backend.
+// /note <texto>: captura rápida. O backend formata o texto, extrai tags e salva
+// uma nota atômica indexada para busca. Sem argumento, abre o navegador de notas.
 export const noteCommand: Command = {
   name: 'note',
   aliases: ['nota', 'n'],
@@ -16,49 +15,18 @@ export const noteCommand: Command = {
       return
     }
 
-    const res = await ctx.notes.route(text)
+    const res = await ctx.notes.capture(text)
     switch (res.status) {
-      case 'created':
-        ctx.emitSystemMessage(`${tr(ctx.lang, 'note_created')} **${res.noteTitle}**`)
+      case 'created': {
+        const tags = res.tags?.length ? `  _${res.tags.map((t) => '#' + t).join(' ')}_` : ''
+        ctx.emitSystemMessage(`${tr(ctx.lang, 'note_created')} **${res.noteTitle}**${tags}`)
         return
-      case 'appended':
-        ctx.emitSystemMessage(`${tr(ctx.lang, 'note_appended')} **${res.noteTitle}**`)
-        return
+      }
       case 'no_api_key':
         ctx.emitSystemMessage(tr(ctx.lang, 'no_api_key'))
-        return
-      case 'full':
-        await resolveFull(ctx, res.noteId, res.noteTitle, text)
         return
       default:
         ctx.emitSystemMessage(tr(ctx.lang, 'note_error') + res.message)
     }
   },
-}
-
-async function resolveFull(
-  ctx: Parameters<Command['run']>[0],
-  noteId: number,
-  noteTitle: string,
-  text: string,
-) {
-  const strategy = await ctx.choose({
-    title: tr(ctx.lang, 'note_full_title'),
-    choices: [
-      { label: tr(ctx.lang, 'note_opt_summarize'), value: 'summarize' },
-      { label: tr(ctx.lang, 'note_opt_part2'), value: 'part2' },
-      { label: tr(ctx.lang, 'note_opt_split'), value: 'split' },
-    ],
-  })
-  if (!strategy) {
-    ctx.emitSystemMessage(tr(ctx.lang, 'note_cancelled'))
-    return
-  }
-
-  const res = await ctx.notes.resolveOverflow(noteId, text, strategy)
-  if (res.status === 'error') {
-    ctx.emitSystemMessage(tr(ctx.lang, 'note_error') + res.message)
-    return
-  }
-  ctx.emitSystemMessage(`${tr(ctx.lang, 'note_appended')} **${res.noteTitle || noteTitle}**`)
 }

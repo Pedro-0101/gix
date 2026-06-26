@@ -6,7 +6,6 @@ import { CONFIG_FIELDS, KEY_OPTIONS, fieldChoices, findField } from './config-fi
 const CONFIG_KEYS = [
   'theme', 'language', 'open_key', 'open_interval_ms', 'close_key',
   'close_interval_ms', 'model', 'api_key', 'system_prompt', 'opacity',
-  'notes_line_limit', 'notes_integration_mode',
 ]
 
 describe('CONFIG_FIELDS', () => {
@@ -77,26 +76,6 @@ describe('number validators', () => {
       expect(f.max).toBeGreaterThan(f.min)
       expect(f.step).toBeGreaterThan(0)
     }
-  })
-})
-
-describe('notes fields', () => {
-  it('notes_line_limit is a positive-integer number field', () => {
-    const f = findField('notes_line_limit')!
-    expect(f.kind).toBe('number')
-    if (f.kind !== 'number') return
-    expect(f.validate('30')).toBeNull()
-    expect(f.validate('0')).toBe('cfg_invalid_positive')
-    expect(f.validate('-1')).toBe('cfg_invalid_positive')
-    expect(f.min).toBeGreaterThan(0)
-    expect(f.max).toBeGreaterThan(f.min)
-  })
-
-  it('notes_integration_mode is an enum of append/rewrite', () => {
-    const f = findField('notes_integration_mode')!
-    expect(f.kind).toBe('enum')
-    if (f.kind !== 'enum') return
-    expect(f.choices({ lang: 'pt', models: [] }).map((c) => c.value)).toEqual(['append', 'rewrite'])
   })
 })
 

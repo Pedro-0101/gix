@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { NotesService } from '../../bindings/gix/internal/app'
 import type { Note } from '../../bindings/gix/internal/db'
-import { MessageCard } from '../components/MessageCard'
+import { Markdown } from '../components/Markdown'
 import { Button } from '../components/Button'
 import { moveSelection } from '../commands/interaction'
 import { tr } from '../i18n'
@@ -88,9 +88,12 @@ export function NotesView({ lang, onClose }: { lang: string; onClose: () => void
           </div>
         </div>
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 selectable">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 selectable">
         {active && (
-          <MessageCard role="assistant" content={active.Content} label={active.Title} />
+          <article>
+            <h1 className="mb-3 font-mono text-base font-bold text-fg">{active.Title}</h1>
+            <Markdown>{active.Content}</Markdown>
+          </article>
         )}
       </div>
     </div>

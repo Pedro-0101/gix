@@ -15,15 +15,14 @@ export interface Message {
 }
 
 /**
- * Note é uma anotação do usuário. LineLimit == 0 e IntegrationMode == ""
- * significam "usar o default global" (resolvido no serviço, não aqui).
+ * Note is one atomic captured note. Title/Content are AI-formatted at capture;
+ * Tags are AI-extracted. The semantic vector lives in note_vectors and the
+ * searchable text in the notes_fts virtual table (kept in sync by CreateNote).
  */
 export interface Note {
     "ID": number;
     "Title": string;
     "Content": string;
-    "LineLimit": number;
-    "IntegrationMode": string;
+    "Tags": string[] | null;
     "CreatedAt": string;
-    "UpdatedAt": string;
 }

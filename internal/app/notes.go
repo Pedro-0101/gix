@@ -4,32 +4,57 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"gix/internal/ai"
 	"gix/internal/config"
 	"gix/internal/db"
+	"gix/internal/embed"
 )
 
-// Completer é a parte do cliente de IA que o NotesService precisa: uma chamada
-// não-streaming que devolve a resposta inteira (JSON). Injetada para testes.
+// Completer is the slice of the AI client NotesService needs: one non-streaming
+// call returning the whole response (JSON). Injected for tests.
 type Completer interface {
 	Complete(ctx context.Context, model string, msgs []ai.Message) (string, *ai.Usage, error)
 }
+
+// Embedder produces semantic vectors for notes (passages) and searches
+// (queries). Implemented by *embed.Embedder; injected so tests can fake it and
+// so the service still works (full-text only) before the model finishes loading.
+type Embedder interface {
+	EmbedQuery(text string) ([]float32, error)
+	EmbedDoc(text string) ([]float32, error)
+	Dim() int
+}
+
+// Tunables for hybrid search.
+const (
+	candidateLimit = 30 // per-source (FTS / vector) candidates before fusion
+	rrfK           = 60 // Reciprocal Rank Fusion constant
+	askTopK        = 6  // notes fed to the AI for /ask
+	snippetRunes   = 180
+)
 
 type NotesService struct {
 	cfg       *ConfigService
 	db        *db.Database
 	newClient func(apiKey string) Completer
+	embedder  Embedder
 }
 
 func NewNotesService(cfg *ConfigService, database *db.Database, newClient func(apiKey string) Completer) *NotesService {
 	return &NotesService{cfg: cfg, db: database, newClient: newClient}
 }
 
-// List devolve todas as notas, mais recentes primeiro. Usada pela view de
-// leitura de notas no frontend (binding NotesService.List).
+// setEmbedder installs the embedder once the model has loaded (see shell.go's
+// background warm-up). Unexported so Wails doesn't expose it to the frontend;
+// callers live in the same package. Until then semantic search is skipped and
+// captures store no vector.
+func (s *NotesService) setEmbedder(e Embedder) { s.embedder = e }
+
+// List returns every note, newest first (used by the notes browser).
 func (s *NotesService) List() ([]db.Note, error) {
 	if s.db == nil {
 		return nil, nil
@@ -37,195 +62,303 @@ func (s *NotesService) List() ([]db.Note, error) {
 	return s.db.ListNotes()
 }
 
-// RouteResult é o que o frontend recebe após um /note. Status:
-//   - "created"    nova nota criada
-//   - "appended"   item anexado a uma nota existente
-//   - "full"       a nota alvo estouraria o limite — pede escolha ao usuário
-//   - "no_api_key" falta a chave da API
-//   - "error"      falha (mensagem em Message)
-type RouteResult struct {
-	Status    string  `json:"status"`
-	NoteTitle string  `json:"noteTitle"`
-	NoteID    int64   `json:"noteId"`
-	Message   string  `json:"message"`
-	Tokens    int     `json:"tokens"`
-	Cost      float64 `json:"cost"`
+// --- capture ---
+
+// CaptureResult is what the frontend gets after a /note.
+//
+//	"created"    note stored
+//	"no_api_key" the API key is missing
+//	"error"      failure (see Message)
+type CaptureResult struct {
+	Status    string   `json:"status"`
+	NoteID    int64    `json:"noteId"`
+	NoteTitle string   `json:"noteTitle"`
+	Tags      []string `json:"tags"`
+	Message   string   `json:"message"`
+	Tokens    int      `json:"tokens"`
+	Cost      float64  `json:"cost"`
 }
 
-// routeDecision é o JSON que o modelo devolve no roteamento.
-type routeDecision struct {
-	Action        string `json:"action"`
-	NoteID        int64  `json:"note_id"`
-	Title         string `json:"title"`
-	FormattedItem string `json:"formatted_item"`
+// captureDecision is the JSON the model returns when formatting a capture.
+type captureDecision struct {
+	Title   string   `json:"title"`
+	Content string   `json:"content"`
+	Tags    []string `json:"tags"`
 }
 
-// Route decide o destino do texto e aplica a anotação. Ver RouteResult.
-func (s *NotesService) Route(text string) (RouteResult, error) {
+// Capture formats a quick note with the AI (title + Markdown body + tags),
+// stores it as one atomic note, and indexes it for full-text and (if the model
+// is loaded) semantic search.
+func (s *NotesService) Capture(text string) (CaptureResult, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return RouteResult{Status: "error", Message: "empty"}, nil
+		return CaptureResult{Status: "error", Message: "empty"}, nil
 	}
 	if s.db == nil {
-		return RouteResult{Status: "error", Message: "no_db"}, nil
+		return CaptureResult{Status: "error", Message: "no_db"}, nil
 	}
 
 	cfg := s.cfg.Current()
 	apiKey := cfg.ResolveAPIKey()
 	if apiKey == "" {
-		return RouteResult{Status: "no_api_key"}, nil
-	}
-
-	notes, err := s.db.ListNotes()
-	if err != nil {
-		return RouteResult{}, err
+		return CaptureResult{Status: "no_api_key"}, nil
 	}
 
 	client := s.newClient(apiKey)
-	raw, usage, err := client.Complete(context.Background(), cfg.Model, buildRoutePrompt(text, notes, time.Now()))
+	raw, usage, err := client.Complete(context.Background(), cfg.Model, buildCapturePrompt(text, time.Now()))
 	if err != nil {
-		return RouteResult{Status: "error", Message: err.Error()}, nil
+		return CaptureResult{Status: "error", Message: err.Error()}, nil
 	}
-	dec, err := parseRouteJSON(raw)
+	dec, err := parseCaptureJSON(raw)
 	if err != nil {
-		return RouteResult{Status: "error", Message: err.Error()}, nil
+		return CaptureResult{Status: "error", Message: err.Error()}, nil
 	}
 
+	content := strings.TrimSpace(dec.Content)
+	if content == "" {
+		content = text
+	}
+	title := strings.TrimSpace(dec.Title)
+	if title == "" {
+		title = db.ExtractTitle(content)
+	}
+	tags := normalizeTags(dec.Tags)
+
+	var vec []byte
+	dim := 0
+	if s.embedder != nil {
+		if v, eerr := s.embedder.EmbedDoc(title + "\n" + content); eerr == nil {
+			vec = embed.EncodeVector(v)
+			dim = len(v)
+		}
+	}
+
+	id, err := s.db.CreateNote(title, content, tags, vec, dim)
+	if err != nil {
+		return CaptureResult{}, err
+	}
 	tokens, cost := usageCost(usage, cfg.Model)
-
-	if dec.Action == "create" || dec.NoteID == 0 {
-		title := strings.TrimSpace(dec.Title)
-		if title == "" {
-			title = db.ExtractTitle(dec.FormattedItem)
-		}
-		id, err := s.db.CreateNote(title, dec.FormattedItem, 0, "")
-		if err != nil {
-			return RouteResult{}, err
-		}
-		return RouteResult{Status: "created", NoteTitle: title, NoteID: id, Tokens: tokens, Cost: cost}, nil
-	}
-
-	note, err := s.db.GetNote(dec.NoteID)
-	if err != nil {
-		// O modelo apontou para uma nota inexistente: cria uma nova como fallback.
-		title := strings.TrimSpace(dec.Title)
-		if title == "" {
-			title = db.ExtractTitle(dec.FormattedItem)
-		}
-		id, cerr := s.db.CreateNote(title, dec.FormattedItem, 0, "")
-		if cerr != nil {
-			return RouteResult{}, cerr
-		}
-		return RouteResult{Status: "created", NoteTitle: title, NoteID: id, Tokens: tokens, Cost: cost}, nil
-	}
-
-	mode := effectiveMode(note.IntegrationMode, cfg.NotesIntegrationMode)
-	var prospective string
-	if mode == "rewrite" {
-		rewritten, u2, rerr := client.Complete(context.Background(), cfg.Model, buildRewritePrompt(note, dec.FormattedItem))
-		if rerr != nil {
-			return RouteResult{Status: "error", Message: rerr.Error()}, nil
-		}
-		t2, c2 := usageCost(u2, cfg.Model)
-		tokens += t2
-		cost += c2
-		prospective = strings.TrimSpace(rewritten)
-	} else {
-		prospective = appendLine(note.Content, dec.FormattedItem)
-	}
-
-	limit := effectiveLimit(note.LineLimit, cfg.NotesLineLimit)
-	if exceedsLimit(prospective, limit) {
-		return RouteResult{Status: "full", NoteTitle: note.Title, NoteID: note.ID, Tokens: tokens, Cost: cost}, nil
-	}
-	if err := s.db.UpdateNoteContent(note.ID, prospective); err != nil {
-		return RouteResult{}, err
-	}
-	return RouteResult{Status: "appended", NoteTitle: note.Title, NoteID: note.ID, Tokens: tokens, Cost: cost}, nil
+	return CaptureResult{Status: "created", NoteID: id, NoteTitle: title, Tags: tags, Tokens: tokens, Cost: cost}, nil
 }
 
-// ResolveOverflow executa a escolha do usuário quando uma nota estoura o limite.
-// strategy: "summarize" | "part2" | "split".
-func (s *NotesService) ResolveOverflow(noteID int64, text, strategy string) (RouteResult, error) {
-	if s.db == nil {
-		return RouteResult{Status: "error", Message: "no_db"}, nil
+// --- search ---
+
+// SearchResult is one ranked note for /find and /ask. Content is included so the
+// detail pane can render it without another round-trip.
+type SearchResult struct {
+	NoteID  int64    `json:"noteId"`
+	Title   string   `json:"title"`
+	Snippet string   `json:"snippet"`
+	Content string   `json:"content"`
+	Tags    []string `json:"tags"`
+	Score   float64  `json:"score"`
+}
+
+// Find runs hybrid search (full-text + semantic, fused via RRF). No AI, no cost.
+func (s *NotesService) Find(query string) ([]SearchResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" || s.db == nil {
+		return nil, nil
 	}
-	note, err := s.db.GetNote(noteID)
+
+	ftsHits, err := s.db.SearchFTS(query, candidateLimit)
 	if err != nil {
-		return RouteResult{}, err
+		return nil, err
 	}
+	ftsOrder := make([]int64, len(ftsHits))
+	for i, h := range ftsHits {
+		ftsOrder[i] = h.NoteID
+	}
+
+	vecOrder, err := s.vectorSearch(query)
+	if err != nil {
+		return nil, err
+	}
+
+	fused := rrf([][]int64{ftsOrder, vecOrder}, rrfK)
+	if len(fused) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]int64, len(fused))
+	for i, f := range fused {
+		ids[i] = f.id
+	}
+	notes, err := s.db.NotesByIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]db.Note, len(notes))
+	for _, n := range notes {
+		byID[n.ID] = n
+	}
+
+	results := make([]SearchResult, 0, len(fused))
+	for _, f := range fused {
+		n, ok := byID[f.id]
+		if !ok {
+			continue
+		}
+		results = append(results, SearchResult{
+			NoteID:  n.ID,
+			Title:   n.Title,
+			Snippet: snippet(n.Content),
+			Content: n.Content,
+			Tags:    n.Tags,
+			Score:   f.score,
+		})
+	}
+	return results, nil
+}
+
+// vectorSearch embeds the query and ranks all stored note vectors by cosine.
+// Returns note ids best-first, or nil when the embedder isn't ready yet.
+func (s *NotesService) vectorSearch(query string) ([]int64, error) {
+	if s.embedder == nil {
+		return nil, nil
+	}
+	qv, err := s.embedder.EmbedQuery(query)
+	if err != nil {
+		return nil, nil // degrade to FTS-only rather than failing the search
+	}
+	vecs, err := s.db.AllVectors()
+	if err != nil {
+		return nil, err
+	}
+	type scored struct {
+		id  int64
+		sim float64
+	}
+	ranked := make([]scored, 0, len(vecs))
+	for _, v := range vecs {
+		sim := embed.Cosine(qv, embed.DecodeVector(v.Vec))
+		if sim <= 0 { // orthogonal/opposite carries no semantic signal
+			continue
+		}
+		ranked = append(ranked, scored{id: v.NoteID, sim: sim})
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].sim > ranked[j].sim })
+	if len(ranked) > candidateLimit {
+		ranked = ranked[:candidateLimit]
+	}
+	order := make([]int64, len(ranked))
+	for i, r := range ranked {
+		order[i] = r.id
+	}
+	return order, nil
+}
+
+// --- ask ---
+
+// AskResult is /find plus an AI summary of the top notes.
+type AskResult struct {
+	Status  string         `json:"status"`
+	Summary string         `json:"summary"`
+	Sources []SearchResult `json:"sources"`
+	Message string         `json:"message"`
+	Tokens  int            `json:"tokens"`
+	Cost    float64        `json:"cost"`
+}
+
+// Ask searches, then asks the AI to summarize the top notes in answer to the
+// query. Returns the summary plus the source notes it drew from.
+func (s *NotesService) Ask(query string) (AskResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return AskResult{Status: "error", Message: "empty"}, nil
+	}
+
+	results, err := s.Find(query)
+	if err != nil {
+		return AskResult{}, err
+	}
+	if len(results) == 0 {
+		return AskResult{Status: "empty", Sources: nil}, nil
+	}
+	if len(results) > askTopK {
+		results = results[:askTopK]
+	}
+
 	cfg := s.cfg.Current()
-
-	switch strategy {
-	case "part2":
-		// Sem IA: cria uma nota irmã com o texto cru.
-		title := note.Title + " 2"
-		id, cerr := s.db.CreateNote(title, strings.TrimSpace(text), note.LineLimit, note.IntegrationMode)
-		if cerr != nil {
-			return RouteResult{}, cerr
-		}
-		return RouteResult{Status: "created", NoteTitle: title, NoteID: id}, nil
-
-	case "summarize":
-		apiKey := cfg.ResolveAPIKey()
-		if apiKey == "" {
-			return RouteResult{Status: "no_api_key"}, nil
-		}
-		client := s.newClient(apiKey)
-		raw, usage, cerr := client.Complete(context.Background(), cfg.Model, buildSummarizePrompt(note, text))
-		if cerr != nil {
-			return RouteResult{Status: "error", Message: cerr.Error()}, nil
-		}
-		tokens, cost := usageCost(usage, cfg.Model)
-		if err := s.db.UpdateNoteContent(note.ID, strings.TrimSpace(raw)); err != nil {
-			return RouteResult{}, err
-		}
-		return RouteResult{Status: "appended", NoteTitle: note.Title, NoteID: note.ID, Tokens: tokens, Cost: cost}, nil
-
-	case "split":
-		apiKey := cfg.ResolveAPIKey()
-		if apiKey == "" {
-			return RouteResult{Status: "no_api_key"}, nil
-		}
-		client := s.newClient(apiKey)
-		raw, usage, cerr := client.Complete(context.Background(), cfg.Model, buildSplitPrompt(note, text))
-		if cerr != nil {
-			return RouteResult{Status: "error", Message: cerr.Error()}, nil
-		}
-		parts, perr := parseSplitJSON(raw)
-		if perr != nil || len(parts) == 0 {
-			return RouteResult{Status: "error", Message: "split_parse"}, nil
-		}
-		tokens, cost := usageCost(usage, cfg.Model)
-		if err := s.db.DeleteNote(note.ID); err != nil {
-			return RouteResult{}, err
-		}
-		var firstTitle string
-		for i, p := range parts {
-			id, cerr := s.db.CreateNote(p.Title, p.Content, note.LineLimit, note.IntegrationMode)
-			if cerr != nil {
-				return RouteResult{}, cerr
-			}
-			if i == 0 {
-				firstTitle = p.Title
-				_ = id
-			}
-		}
-		return RouteResult{Status: "split", NoteTitle: firstTitle, Tokens: tokens, Cost: cost}, nil
-
-	default:
-		return RouteResult{Status: "error", Message: "unknown_strategy"}, nil
+	apiKey := cfg.ResolveAPIKey()
+	if apiKey == "" {
+		return AskResult{Status: "no_api_key", Sources: results}, nil
 	}
+
+	client := s.newClient(apiKey)
+	raw, usage, err := client.Complete(context.Background(), cfg.Model, buildSummarizePrompt(query, results))
+	if err != nil {
+		return AskResult{Status: "error", Message: err.Error(), Sources: results}, nil
+	}
+	tokens, cost := usageCost(usage, cfg.Model)
+	return AskResult{
+		Status:  "ok",
+		Summary: strings.TrimSpace(stripFences(raw)),
+		Sources: results,
+		Tokens:  tokens,
+		Cost:    cost,
+	}, nil
 }
 
-type splitPart struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
+// --- fusion ---
+
+type fusedItem struct {
+	id    int64
+	score float64
 }
 
-// --- helpers puros ---
+// rrf fuses several ranked id lists with Reciprocal Rank Fusion: an item's score
+// is the sum over lists of 1/(k + rank), rank being 0-based. Higher is better.
+func rrf(rankings [][]int64, k float64) []fusedItem {
+	scores := map[int64]float64{}
+	for _, ranking := range rankings {
+		for rank, id := range ranking {
+			scores[id] += 1 / (k + float64(rank))
+		}
+	}
+	out := make([]fusedItem, 0, len(scores))
+	for id, sc := range scores {
+		out = append(out, fusedItem{id: id, score: sc})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].score != out[j].score {
+			return out[i].score > out[j].score
+		}
+		return out[i].id > out[j].id // stable, newest-id first on ties
+	})
+	return out
+}
 
-// stripFences remove cercas de bloco ```json … ``` ao redor de uma resposta.
+// --- helpers ---
+
+// snippet returns a short single-line preview of a note's content.
+func snippet(content string) string {
+	flat := strings.Join(strings.Fields(strings.ReplaceAll(content, "\n", " ")), " ")
+	r := []rune(flat)
+	if len(r) > snippetRunes {
+		return strings.TrimSpace(string(r[:snippetRunes])) + "…"
+	}
+	return flat
+}
+
+// normalizeTags trims, lowercases, drops empties and de-dupes, capping at 5.
+func normalizeTags(tags []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range tags {
+		t = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(t, "#")))
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+		if len(out) == 5 {
+			break
+		}
+	}
+	return out
+}
+
 func stripFences(s string) string {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "```") {
@@ -238,56 +371,10 @@ func stripFences(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func parseRouteJSON(s string) (routeDecision, error) {
-	var dec routeDecision
+func parseCaptureJSON(s string) (captureDecision, error) {
+	var dec captureDecision
 	err := json.Unmarshal([]byte(stripFences(s)), &dec)
 	return dec, err
-}
-
-func parseSplitJSON(s string) ([]splitPart, error) {
-	var parts []splitPart
-	err := json.Unmarshal([]byte(stripFences(s)), &parts)
-	return parts, err
-}
-
-// appendLine cola item ao fim do conteúdo, garantindo uma quebra de linha.
-func appendLine(content, item string) string {
-	content = strings.TrimRight(content, "\n")
-	item = strings.TrimSpace(item)
-	if content == "" {
-		return item
-	}
-	return content + "\n" + item
-}
-
-// exceedsLimit informa se o conteúdo passa do limite de linhas. limit 0 = ilimitado.
-func exceedsLimit(content string, limit int) bool {
-	if limit <= 0 {
-		return false
-	}
-	return countLines(content) > limit
-}
-
-func countLines(content string) int {
-	content = strings.TrimRight(content, "\n")
-	if content == "" {
-		return 0
-	}
-	return strings.Count(content, "\n") + 1
-}
-
-func effectiveLimit(noteLimit, globalLimit int) int {
-	if noteLimit > 0 {
-		return noteLimit
-	}
-	return globalLimit
-}
-
-func effectiveMode(noteMode, globalMode string) string {
-	if noteMode != "" {
-		return noteMode
-	}
-	return globalMode
 }
 
 func usageCost(usage *ai.Usage, model string) (int, float64) {
@@ -303,51 +390,29 @@ func usageCost(usage *ai.Usage, model string) (int, float64) {
 
 // --- prompts ---
 
-func notesContext(notes []db.Note) string {
-	if len(notes) == 0 {
-		return "(nenhuma nota existente)"
-	}
-	var b strings.Builder
-	for _, n := range notes {
-		fmt.Fprintf(&b, "id=%d | título=%q | modo=%s\n%s\n---\n", n.ID, n.Title, n.IntegrationMode, n.Content)
-	}
-	return b.String()
-}
-
-func buildRoutePrompt(text string, notes []db.Note, now time.Time) []ai.Message {
-	system := fmt.Sprintf(`Você roteia anotações rápidas do usuário para notas.
+func buildCapturePrompt(text string, now time.Time) []ai.Message {
+	system := fmt.Sprintf(`Você organiza anotações rápidas do usuário em uma nota atômica e bem formatada.
 A data e hora atuais são: %s.
-Decida se a anotação deve ser ANEXADA a uma nota existente de tema compatível ou se uma NOVA nota deve ser criada.
-Resolva qualquer data relativa ("amanhã", "sexta") para uma data absoluta no próprio texto formatado.
-Responda APENAS com JSON, sem cercas, neste formato:
-{"action":"append"|"create","note_id":<id da nota se append, senão 0>,"title":<título curto se create, senão "">,"formatted_item":"<a anotação como UMA linha, formatada e com a data já absoluta>"}
-
-Notas existentes:
-%s`, now.Format("2006-01-02 15:04 (Monday)"), notesContext(notes))
+Resolva qualquer data relativa ("amanhã", "sexta") para uma data absoluta no texto.
+Formate "content" como Markdown bem estruturado (parágrafo, lista, tarefa "- [ ]", ou pequena seção) — preserve a informação do usuário, sem inventar nem remover.
+Gere um "title" curto (sem marcadores Markdown) e de 1 a 5 "tags" temáticas, minúsculas, sem "#".
+Responda APENAS com JSON, sem cercas:
+{"title":"<título curto>","content":"<Markdown da nota>","tags":["tag1","tag2"]}`,
+		now.Format("2006-01-02 15:04 (Monday)"))
 	return []ai.Message{
 		{Role: "system", Content: system},
 		{Role: "user", Content: text},
 	}
 }
 
-func buildRewritePrompt(note db.Note, item string) []ai.Message {
-	system := `Você reorganiza uma nota incorporando um novo item.
-Agrupe itens semelhantes e normalize o formato, mas NÃO invente nem remova informação do usuário.
-Responda APENAS com o texto completo e atualizado da nota, sem comentários nem cercas.`
-	user := fmt.Sprintf("Nota atual:\n%s\n\nNovo item a incorporar:\n%s", note.Content, item)
-	return []ai.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
-}
-
-func buildSummarizePrompt(note db.Note, item string) []ai.Message {
-	system := `A nota está cheia. Condense-a preservando a informação essencial e então inclua o novo item.
-Responda APENAS com o texto completo e resumido da nota, sem comentários nem cercas.`
-	user := fmt.Sprintf("Nota atual:\n%s\n\nNovo item a incluir:\n%s", note.Content, item)
-	return []ai.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
-}
-
-func buildSplitPrompt(note db.Note, item string) []ai.Message {
-	system := `A nota mistura temas diferentes e está cheia. Divida-a (incluindo o novo item) em 2 ou mais notas temáticas.
-Responda APENAS com JSON, sem cercas, um array: [{"title":"...","content":"..."}]`
-	user := fmt.Sprintf("Nota atual (título %q):\n%s\n\nNovo item:\n%s", note.Title, note.Content, item)
+func buildSummarizePrompt(query string, results []SearchResult) []ai.Message {
+	var b strings.Builder
+	for i, r := range results {
+		fmt.Fprintf(&b, "[%d] %s\n%s\n---\n", i+1, r.Title, r.Content)
+	}
+	system := `Você responde à pergunta do usuário usando APENAS as anotações fornecidas abaixo.
+Resuma de forma direta em Markdown. Não invente informação que não esteja nas notas.
+Se as notas não responderem à pergunta, diga isso claramente.`
+	user := fmt.Sprintf("Pergunta:\n%s\n\nAnotações:\n%s", query, b.String())
 	return []ai.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
 }

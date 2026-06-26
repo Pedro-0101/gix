@@ -1,7 +1,11 @@
 package app
 
 import (
+	"context"
 	"io/fs"
+	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -9,8 +13,19 @@ import (
 	"gix/internal/ai"
 	"gix/internal/config"
 	"gix/internal/db"
+	"gix/internal/embed"
 	"gix/internal/hotkey"
 )
+
+// modelsDir is where the embedding model/tokenizer are cached, under the same
+// per-user config dir as the database (e.g. %AppData%/gix/models).
+func modelsDir() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "models"
+	}
+	return filepath.Join(dir, "gix", "models")
+}
 
 // Run bootstraps the Wails v3 application: registers the services, creates the
 // frameless always-on-top window (hidden at boot), the system tray, and the
@@ -34,6 +49,23 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		func(apiKey string) Streamer { return ai.New(apiKey) })
 	notesSvc := NewNotesService(cfgSvc, database,
 		func(apiKey string) Completer { return ai.New(apiKey) })
+
+	// Load the embedding model in the background so the UI starts instantly. The
+	// model+tokenizer download on first run (progress is forwarded to the
+	// frontend); until it's ready, search falls back to full-text only.
+	embed.OnDownloadProgress = func(file string, downloaded, total int64) {
+		emit("embed:progress", map[string]any{"file": file, "downloaded": downloaded, "total": total})
+	}
+	go func() {
+		e, err := embed.Open(context.Background(), modelsDir())
+		if err != nil {
+			log.Printf("embed: model unavailable, semantic search disabled: %v", err)
+			emit("embed:error", err.Error())
+			return
+		}
+		notesSvc.setEmbedder(e)
+		emit("embed:ready", nil)
+	}()
 
 	wailsApp = application.New(application.Options{
 		Name:        "gix",

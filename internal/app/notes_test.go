@@ -2,17 +2,16 @@ package app
 
 import (
 	"context"
-	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"gix/internal/ai"
 	"gix/internal/db"
+	"gix/internal/embed"
 )
 
-// fakeCompleter devolve respostas enfileiradas (uma por chamada) e guarda a
-// última lista de mensagens recebida, para inspeção nos testes.
+// fakeCompleter returns queued responses (one per call) and records the last
+// messages it received.
 type fakeCompleter struct {
 	responses []string
 	calls     int
@@ -29,9 +28,38 @@ func (f *fakeCompleter) Complete(ctx context.Context, model string, msgs []ai.Me
 	return r, &ai.Usage{TotalTokens: 5}, nil
 }
 
+// fakeEmbedder maps text to a 3-dim theme vector by keyword, so tests can assert
+// semantic ranking deterministically (no model needed).
+type fakeEmbedder struct{}
+
+var themeKeywords = [3][]string{
+	{"carro", "motor", "oficina", "veículo", "ruído", "barulho"}, // theme 0
+	{"mercado", "pão", "leite", "compra", "compras"},             // theme 1
+	{"reunião", "equipe", "time", "encontro"},                    // theme 2
+}
+
+func (fakeEmbedder) Dim() int { return 3 }
+
+func (fakeEmbedder) embed(text string) ([]float32, error) {
+	text = strings.ToLower(text)
+	v := make([]float32, 3)
+	for i, kws := range themeKeywords {
+		for _, kw := range kws {
+			if strings.Contains(text, kw) {
+				v[i] = 1
+				break
+			}
+		}
+	}
+	return v, nil
+}
+
+func (e fakeEmbedder) EmbedDoc(text string) ([]float32, error)   { return e.embed(text) }
+func (e fakeEmbedder) EmbedQuery(text string) ([]float32, error) { return e.embed(text) }
+
 func notesTestDB(t *testing.T) *db.Database {
 	t.Helper()
-	d, err := db.Open(filepath.Join(t.TempDir(), "notes.db"))
+	d, err := db.Open(t.TempDir() + "/notes.db")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -43,182 +71,224 @@ func newNotesSvc(t *testing.T, d *db.Database, fake Completer) *NotesService {
 	t.Helper()
 	t.Setenv("AppData", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "k")
-	return NewNotesService(NewConfigService(), d, func(string) Completer { return fake })
+	svc := NewNotesService(NewConfigService(), d, func(string) Completer { return fake })
+	svc.setEmbedder(fakeEmbedder{})
+	return svc
 }
 
-func TestRouteCreatesNewNote(t *testing.T) {
+// addNote inserts a note with a real fake-embedding vector, mimicking Capture's
+// storage without going through the AI.
+func addNote(t *testing.T, d *db.Database, title, content string, tags ...string) int64 {
+	t.Helper()
+	v, _ := fakeEmbedder{}.EmbedDoc(title + "\n" + content)
+	id, err := d.CreateNote(title, content, tags, embed.EncodeVector(v), len(v))
+	if err != nil {
+		t.Fatalf("addNote: %v", err)
+	}
+	return id
+}
+
+func TestCaptureCreatesNote(t *testing.T) {
 	d := notesTestDB(t)
 	fake := &fakeCompleter{responses: []string{
-		`{"action":"create","title":"Compras","formatted_item":"- comprar shampoo (26/06 manhã)"}`,
+		`{"title":"Carro","content":"barulho no motor do carro","tags":["carro","#Manutenção"]}`,
 	}}
 	svc := newNotesSvc(t, d, fake)
 
-	res, err := svc.Route("comprar shampoo amanhã de manhã")
+	res, err := svc.Capture("o carro tá com barulho")
 	if err != nil {
-		t.Fatalf("Route: %v", err)
+		t.Fatalf("Capture: %v", err)
 	}
-	if res.Status != "created" || res.NoteTitle != "Compras" {
-		t.Fatalf("resultado inesperado: %+v", res)
+	if res.Status != "created" || res.NoteTitle != "Carro" {
+		t.Fatalf("unexpected result: %+v", res)
 	}
-	notes, _ := d.ListNotes()
-	if len(notes) != 1 || !strings.Contains(notes[0].Content, "shampoo") {
-		t.Fatalf("nota não criada corretamente: %+v", notes)
+	if len(res.Tags) != 2 || res.Tags[0] != "carro" || res.Tags[1] != "manutenção" {
+		t.Fatalf("tags not normalized: %+v", res.Tags)
+	}
+	if vecs, _ := d.AllVectors(); len(vecs) != 1 {
+		t.Fatalf("expected one stored vector, got %d", len(vecs))
 	}
 }
 
-func TestRouteAppendsToExistingNote(t *testing.T) {
+func TestCaptureFallbackTitle(t *testing.T) {
 	d := notesTestDB(t)
-	id, _ := d.CreateNote("Lembretes", "- pagar conta", 0, "append")
-	fake := &fakeCompleter{responses: []string{
-		fmt.Sprintf(`{"action":"append","note_id":%d,"formatted_item":"- comprar shampoo"}`, id),
-	}}
+	fake := &fakeCompleter{responses: []string{`{"content":"primeira linha\nsegunda","tags":[]}`}}
 	svc := newNotesSvc(t, d, fake)
 
-	res, err := svc.Route("comprar shampoo")
+	res, err := svc.Capture("algo")
 	if err != nil {
-		t.Fatalf("Route: %v", err)
+		t.Fatalf("Capture: %v", err)
 	}
-	if res.Status != "appended" || res.NoteID != id {
-		t.Fatalf("resultado inesperado: %+v", res)
-	}
-	n, _ := d.GetNote(id)
-	if !strings.Contains(n.Content, "shampoo") || !strings.Contains(n.Content, "pagar conta") {
-		t.Fatalf("anexo não preservou o conteúdo: %q", n.Content)
+	if res.NoteTitle != "primeira linha" {
+		t.Fatalf("expected title from content, got %q", res.NoteTitle)
 	}
 }
 
-func TestRouteReturnsFullWhenLimitExceeded(t *testing.T) {
-	d := notesTestDB(t)
-	// Nota com limite próprio de 2 linhas, já com 2 linhas.
-	id, _ := d.CreateNote("Cheia", "l1\nl2", 2, "append")
-	fake := &fakeCompleter{responses: []string{
-		fmt.Sprintf(`{"action":"append","note_id":%d,"formatted_item":"l3"}`, id),
-	}}
-	svc := newNotesSvc(t, d, fake)
-
-	res, err := svc.Route("l3")
-	if err != nil {
-		t.Fatalf("Route: %v", err)
-	}
-	if res.Status != "full" || res.NoteID != id {
-		t.Fatalf("esperava status full: %+v", res)
-	}
-	n, _ := d.GetNote(id)
-	if n.Content != "l1\nl2" {
-		t.Fatalf("nota cheia não deveria ter sido gravada: %q", n.Content)
-	}
-}
-
-func TestRouteNoAPIKey(t *testing.T) {
+func TestCaptureNoAPIKey(t *testing.T) {
 	d := notesTestDB(t)
 	t.Setenv("AppData", t.TempDir())
 	t.Setenv("OPENROUTER_API_KEY", "")
 	svc := NewNotesService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} })
 
-	res, err := svc.Route("algo")
+	res, err := svc.Capture("algo")
 	if err != nil {
-		t.Fatalf("Route: %v", err)
+		t.Fatalf("Capture: %v", err)
 	}
 	if res.Status != "no_api_key" {
-		t.Fatalf("esperava no_api_key, veio %+v", res)
+		t.Fatalf("expected no_api_key, got %+v", res)
 	}
 }
 
-func TestResolveOverflowPart2(t *testing.T) {
+func TestFindHybridRanksAndIncludesSemanticOnly(t *testing.T) {
 	d := notesTestDB(t)
-	id, _ := d.CreateNote("Cheia", "l1\nl2", 2, "append")
+	carExact := addNote(t, d, "Carro", "o motor do carro está com barulho", "carro")
+	carSemantic := addNote(t, d, "Oficina", "levei o veículo na oficina pelo ruído", "manutenção")
+	addNote(t, d, "Mercado", "comprei pão e leite", "compras")
 	svc := newNotesSvc(t, d, &fakeCompleter{})
 
-	res, err := svc.ResolveOverflow(id, "novo item", "part2")
+	results, err := svc.Find("carro")
 	if err != nil {
-		t.Fatalf("ResolveOverflow: %v", err)
+		t.Fatalf("Find: %v", err)
 	}
-	if res.Status != "created" {
-		t.Fatalf("esperava created: %+v", res)
+	if len(results) < 2 {
+		t.Fatalf("expected at least 2 results, got %d: %+v", len(results), results)
 	}
-	notes, _ := d.ListNotes()
-	var found bool
-	for _, n := range notes {
-		if n.Title == "Cheia 2" && strings.Contains(n.Content, "novo item") {
-			found = true
+	// carExact matches both full-text and vector → ranks first via RRF.
+	if results[0].NoteID != carExact {
+		t.Fatalf("expected exact car note first, got %+v", results)
+	}
+	// carSemantic shares no query term but is found via the vector (semantic).
+	var foundSemantic, foundMarket bool
+	for _, r := range results {
+		if r.NoteID == carSemantic {
+			foundSemantic = true
+		}
+		if r.Title == "Mercado" {
+			foundMarket = true
 		}
 	}
-	if len(notes) != 2 || !found {
-		t.Fatalf("parte 2 não criada: %+v", notes)
+	if !foundSemantic {
+		t.Fatalf("semantic-only car note missing from results: %+v", results)
+	}
+	if foundMarket {
+		t.Fatalf("unrelated market note should not appear for query 'carro': %+v", results)
 	}
 }
 
-func TestResolveOverflowSummarize(t *testing.T) {
+func TestFindFullTextOnlyWithoutEmbedder(t *testing.T) {
 	d := notesTestDB(t)
-	id, _ := d.CreateNote("Cheia", "l1\nl2\nl3", 2, "append")
-	fake := &fakeCompleter{responses: []string{"resumo conciso\n- novo item"}}
+	addNote(t, d, "Carro", "motor do carro com barulho", "carro")
+	// Service without an embedder: must still work via full-text alone.
+	svc := NewNotesService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} })
+
+	results, err := svc.Find("carro")
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 full-text result, got %+v", results)
+	}
+}
+
+func TestAskSummarizesTopNotes(t *testing.T) {
+	d := notesTestDB(t)
+	addNote(t, d, "Carro", "o motor do carro está com barulho", "carro")
+	fake := &fakeCompleter{responses: []string{"resumo: o carro está com barulho no motor"}}
 	svc := newNotesSvc(t, d, fake)
 
-	res, err := svc.ResolveOverflow(id, "novo item", "summarize")
+	res, err := svc.Ask("o que tem sobre o carro?")
 	if err != nil {
-		t.Fatalf("ResolveOverflow: %v", err)
+		t.Fatalf("Ask: %v", err)
 	}
-	if res.Status != "appended" {
-		t.Fatalf("esperava appended: %+v", res)
+	if res.Status != "ok" || !strings.Contains(res.Summary, "resumo") {
+		t.Fatalf("unexpected ask result: %+v", res)
 	}
-	n, _ := d.GetNote(id)
-	if n.Content != "resumo conciso\n- novo item" {
-		t.Fatalf("resumo não gravado: %q", n.Content)
+	if len(res.Sources) == 0 {
+		t.Fatalf("expected source notes, got none")
+	}
+	if fake.calls != 1 {
+		t.Fatalf("Ask should call the AI exactly once, called %d", fake.calls)
 	}
 }
 
-func TestParseRouteJSONStripsFences(t *testing.T) {
-	dec, err := parseRouteJSON("```json\n{\"action\":\"create\",\"title\":\"X\",\"formatted_item\":\"- y\"}\n```")
+func TestAskEmptyWhenNoNotes(t *testing.T) {
+	d := notesTestDB(t)
+	fake := &fakeCompleter{responses: []string{"should not be called"}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Ask("qualquer coisa")
 	if err != nil {
-		t.Fatalf("parseRouteJSON: %v", err)
+		t.Fatalf("Ask: %v", err)
 	}
-	if dec.Action != "create" || dec.Title != "X" || dec.FormattedItem != "- y" {
-		t.Fatalf("decodificação inesperada: %+v", dec)
+	if res.Status != "empty" {
+		t.Fatalf("expected empty, got %+v", res)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Ask must not call the AI when there are no notes")
 	}
 }
 
-func TestExceedsLimit(t *testing.T) {
-	if !exceedsLimit("a\nb\nc", 2) {
-		t.Error("3 linhas deveriam exceder limite 2")
+func TestFindDoesNotCallAI(t *testing.T) {
+	d := notesTestDB(t)
+	addNote(t, d, "Carro", "motor do carro", "carro")
+	fake := &fakeCompleter{responses: []string{"nope"}}
+	svc := newNotesSvc(t, d, fake)
+
+	if _, err := svc.Find("carro"); err != nil {
+		t.Fatalf("Find: %v", err)
 	}
-	if exceedsLimit("a\nb", 2) {
-		t.Error("2 linhas não excedem limite 2")
+	if fake.calls != 0 {
+		t.Fatalf("Find must not call the AI, called %d", fake.calls)
 	}
-	if exceedsLimit("a\nb\nc\nd", 0) {
-		t.Error("limite 0 significa ilimitado")
+}
+
+func TestRRFRewardsAppearingInBothLists(t *testing.T) {
+	// id 2 is rank-1 in list A and rank-0 in list B; id 1 is rank-0 in A only.
+	fused := rrf([][]int64{{1, 2}, {2, 3}}, 60)
+	if len(fused) != 3 || fused[0].id != 2 {
+		t.Fatalf("expected id 2 fused first, got %+v", fused)
+	}
+}
+
+func TestNormalizeTags(t *testing.T) {
+	got := normalizeTags([]string{"#Carro", "carro", " Manutenção ", "", "a", "b", "c", "d"})
+	want := []string{"carro", "manutenção", "a", "b", "c"} // de-duped, lowercased, capped at 5
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("normalizeTags = %v, want %v", got, want)
+	}
+}
+
+func TestSnippetSingleLineAndTruncates(t *testing.T) {
+	if s := snippet("uma\nnota\ncurta"); s != "uma nota curta" {
+		t.Fatalf("snippet flatten failed: %q", s)
+	}
+	long := strings.Repeat("palavra ", 60)
+	if s := snippet(long); !strings.HasSuffix(s, "…") {
+		t.Fatalf("expected ellipsis on long snippet: %q", s)
+	}
+}
+
+func TestParseCaptureJSONStripsFences(t *testing.T) {
+	dec, err := parseCaptureJSON("```json\n{\"title\":\"X\",\"content\":\"- y\",\"tags\":[\"t\"]}\n```")
+	if err != nil {
+		t.Fatalf("parseCaptureJSON: %v", err)
+	}
+	if dec.Title != "X" || dec.Content != "- y" || len(dec.Tags) != 1 {
+		t.Fatalf("unexpected decode: %+v", dec)
 	}
 }
 
 func TestListReturnsNotesNewestFirst(t *testing.T) {
 	d := notesTestDB(t)
-	if _, err := d.CreateNote("Primeira", "- a", 0, "append"); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if _, err := d.CreateNote("Segunda", "- b", 0, "append"); err != nil {
-		t.Fatalf("create: %v", err)
-	}
+	addNote(t, d, "Primeira", "a")
+	addNote(t, d, "Segunda", "b")
 	svc := newNotesSvc(t, d, &fakeCompleter{})
 
 	notes, err := svc.List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(notes) != 2 {
-		t.Fatalf("esperava 2 notas, veio %d", len(notes))
-	}
-	if notes[0].Title != "Segunda" || notes[1].Title != "Primeira" {
-		t.Fatalf("ordem inesperada: %+v", notes)
-	}
-}
-
-func TestListEmptyReturnsNoError(t *testing.T) {
-	d := notesTestDB(t)
-	svc := newNotesSvc(t, d, &fakeCompleter{})
-	notes, err := svc.List()
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(notes) != 0 {
-		t.Fatalf("esperava lista vazia, veio %+v", notes)
+	if len(notes) != 2 || notes[0].Title != "Segunda" || notes[1].Title != "Primeira" {
+		t.Fatalf("unexpected order: %+v", notes)
 	}
 }

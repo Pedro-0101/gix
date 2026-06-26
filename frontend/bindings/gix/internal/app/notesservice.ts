@@ -14,24 +14,32 @@ import * as db$0 from "../db/models.js";
 import * as $models from "./models.js";
 
 /**
- * List devolve todas as notas, mais recentes primeiro. Usada pela view de
- * leitura de notas no frontend (binding NotesService.List).
+ * Ask searches, then asks the AI to summarize the top notes in answer to the
+ * query. Returns the summary plus the source notes it drew from.
+ */
+export function Ask(query: string): $CancellablePromise<$models.AskResult> {
+    return $Call.ByID(3800370906, query);
+}
+
+/**
+ * Capture formats a quick note with the AI (title + Markdown body + tags),
+ * stores it as one atomic note, and indexes it for full-text and (if the model
+ * is loaded) semantic search.
+ */
+export function Capture(text: string): $CancellablePromise<$models.CaptureResult> {
+    return $Call.ByID(3530421209, text);
+}
+
+/**
+ * Find runs hybrid search (full-text + semantic, fused via RRF). No AI, no cost.
+ */
+export function Find(query: string): $CancellablePromise<$models.SearchResult[] | null> {
+    return $Call.ByID(2852907074, query);
+}
+
+/**
+ * List returns every note, newest first (used by the notes browser).
  */
 export function List(): $CancellablePromise<db$0.Note[] | null> {
     return $Call.ByID(3779446313);
-}
-
-/**
- * ResolveOverflow executa a escolha do usuário quando uma nota estoura o limite.
- * strategy: "summarize" | "part2" | "split".
- */
-export function ResolveOverflow(noteID: number, text: string, strategy: string): $CancellablePromise<$models.RouteResult> {
-    return $Call.ByID(1700925705, noteID, text, strategy);
-}
-
-/**
- * Route decide o destino do texto e aplica a anotação. Ver RouteResult.
- */
-export function Route(text: string): $CancellablePromise<$models.RouteResult> {
-    return $Call.ByID(1350424422, text);
 }

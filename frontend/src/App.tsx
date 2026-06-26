@@ -10,14 +10,16 @@ import { frostColor } from './lib/frost'
 import { SettingsView } from './views/SettingsView'
 import { HistoryView } from './views/HistoryView'
 import { NotesView } from './views/NotesView'
+import { SearchView } from './views/SearchView'
 import { commands, resolveCommand, type CommandContext } from './commands/registry'
+import type { SearchState } from './commands/types'
 import { analyzeBar } from './commands/highlight'
 import { moveSelection, type Interaction } from './commands/interaction'
 import { emptyHistory, record as recordPrompt, prev as prevPrompt, next as nextPrompt, detach as detachPrompt, type PromptHistory } from './commands/promptHistory'
 import { tr } from './i18n'
 import { useReveal } from './lib/reveal'
 
-type View = 'chat' | 'settings' | 'history' | 'notes'
+type View = 'chat' | 'settings' | 'history' | 'notes' | 'search'
 type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string; pending?: boolean; instant?: boolean }
 type ChoiceMsg = { role: 'choice'; title: string; chosenLabel: string }
 type Msg = ChatMsg | ChoiceMsg
@@ -41,6 +43,7 @@ const savePromptHistory = (h: PromptHistory) => {
 
 export default function App() {
   const [view, setView] = useState<View>('chat')
+  const [searchState, setSearchState] = useState<SearchState | null>(null)
   const [lang, setLang] = useState('pt')
   const [theme, setTheme] = useState('light')
   const [opacity, setOpacity] = useState(85) // background frost strength, 0–100
@@ -255,9 +258,11 @@ export default function App() {
       models: () => ConfigService.Models().then((m) => m ?? []),
     },
     notes: {
-      route: (text) => NotesService.Route(text),
-      resolveOverflow: (noteId, text, strategy) => NotesService.ResolveOverflow(noteId, text, strategy),
+      capture: (text) => NotesService.Capture(text) as any,
+      find: (query) => NotesService.Find(query).then((r) => (r ?? []) as any),
+      ask: (query) => NotesService.Ask(query) as any,
     },
+    openSearch: (state) => { setSearchState(state); setView('search') },
   }
 
   // Finalize the active `choose`: record the pick as an inert message and resolve.
@@ -442,8 +447,8 @@ export default function App() {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' ? 'overflow-hidden' : 'overflow-y-auto'}`}
-          style={view === 'history' || view === 'notes' ? { height: panelMax } : { maxHeight: panelMax }}
+          className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${view === 'history' || view === 'notes' || view === 'search' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+          style={view === 'history' || view === 'notes' || view === 'search' ? { height: panelMax } : { maxHeight: panelMax }}
         >
           {view === 'chat' && (
             <div className="space-y-3 px-3 py-3">
@@ -515,6 +520,7 @@ export default function App() {
           {view === 'settings' && <SettingsView lang={lang} onClose={() => { loadCfg(); setView('chat') }} />}
           {view === 'history' && <HistoryView lang={lang} onClose={() => setView('chat')} />}
           {view === 'notes' && <NotesView lang={lang} onClose={() => setView('chat')} />}
+          {view === 'search' && searchState && <SearchView lang={lang} state={searchState} onClose={() => setView('chat')} />}
         </motion.div>
       )}
     </motion.div>

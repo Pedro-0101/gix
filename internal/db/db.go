@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 )
@@ -22,16 +24,28 @@ type Message struct {
 	Content string
 }
 
-// Note é uma anotação do usuário. LineLimit == 0 e IntegrationMode == ""
-// significam "usar o default global" (resolvido no serviço, não aqui).
+// Note is one atomic captured note. Title/Content are AI-formatted at capture;
+// Tags are AI-extracted. The semantic vector lives in note_vectors and the
+// searchable text in the notes_fts virtual table (kept in sync by CreateNote).
 type Note struct {
-	ID              int64
-	Title           string
-	Content         string
-	LineLimit       int
-	IntegrationMode string
-	CreatedAt       string
-	UpdatedAt       string
+	ID        int64
+	Title     string
+	Content   string
+	Tags      []string
+	CreatedAt string
+}
+
+// NoteVector is a stored embedding: the raw little-endian float32 blob plus its
+// note id. Callers decode via embed.DecodeVector.
+type NoteVector struct {
+	NoteID int64
+	Vec    []byte
+}
+
+// FTSHit is a full-text match: a note id and its bm25 score (lower is better).
+type FTSHit struct {
+	NoteID int64
+	Score  float64
 }
 
 type Database struct {
@@ -46,7 +60,7 @@ func New() (*Database, error) {
 	return Open(filepath.Join(dir, "gix", "notes.db"))
 }
 
-// Open abre (ou cria) o banco no caminho dado e garante o schema.
+// Open opens (or creates) the database at path and ensures the schema.
 func Open(path string) (*Database, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
@@ -61,10 +75,24 @@ func Open(path string) (*Database, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
-			line_limit INTEGER NOT NULL DEFAULT 0,
-			integration_mode TEXT NOT NULL DEFAULT '',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS note_tags (
+			note_id INTEGER NOT NULL,
+			tag TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_tags_note ON note_tags(note_id)`,
+		`CREATE TABLE IF NOT EXISTS note_vectors (
+			note_id INTEGER PRIMARY KEY,
+			dim INTEGER NOT NULL,
+			vec BLOB NOT NULL
+		)`,
+		// Regular (not contentless) FTS5 so snippet()/highlight work; rowid = note id.
+		// remove_diacritics 2 makes "ruido" match "ruído" — important for Portuguese.
+		`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+			title, content, tags,
+			tokenize = 'unicode61 remove_diacritics 2'
 		)`,
 		`CREATE TABLE IF NOT EXISTS conversations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,41 +115,239 @@ func Open(path string) (*Database, error) {
 		}
 	}
 
-	// Migração de bancos legados: a tabela notes pode existir sem as colunas
-	// novas. ALTER TABLE ... ADD COLUMN num banco já migrado falha com
-	// "duplicate column name" — ignoramos esse caso para manter idempotência.
-	migrations := []string{
-		`ALTER TABLE notes ADD COLUMN line_limit INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE notes ADD COLUMN integration_mode TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE notes ADD COLUMN updated_at DATETIME`,
-	}
-	for _, m := range migrations {
-		if _, err := db.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
-			return nil, err
-		}
-	}
-
 	return &Database{db: db}, nil
 }
 
-// ExtractTitle gera um título a partir da primeira linha do conteúdo,
-// truncando em 40 runas.
-func ExtractTitle(content string) string {
-	content = strings.TrimSpace(content)
-	if i := strings.IndexByte(content, '\n'); i != -1 {
-		content = content[:i]
+// --- notes ---
+
+// CreateNote inserts an atomic note with its tags and embedding, and indexes it
+// for full-text search, all in one transaction. vec is the embed-serialized
+// vector blob; dim its length in float32s. Returns the new note id.
+func (d *Database) CreateNote(title, content string, tags []string, vec []byte, dim int) (int64, error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return 0, err
 	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return "Conversa"
+	defer tx.Rollback()
+
+	res, err := tx.Exec("INSERT INTO notes (title, content) VALUES (?, ?)", title, content)
+	if err != nil {
+		return 0, err
 	}
-	r := []rune(content)
-	const max = 40
-	if len(r) > max {
-		return strings.TrimSpace(string(r[:max])) + "…"
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
 	}
-	return content
+
+	for _, tag := range tags {
+		if _, err := tx.Exec("INSERT INTO note_tags (note_id, tag) VALUES (?, ?)", id, tag); err != nil {
+			return 0, err
+		}
+	}
+
+	if len(vec) > 0 {
+		if _, err := tx.Exec("INSERT INTO note_vectors (note_id, dim, vec) VALUES (?, ?, ?)", id, dim, vec); err != nil {
+			return 0, err
+		}
+	}
+
+	if _, err := tx.Exec(
+		"INSERT INTO notes_fts (rowid, title, content, tags) VALUES (?, ?, ?, ?)",
+		id, title, content, strings.Join(tags, " ")); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
+
+// GetNote returns one note with its tags.
+func (d *Database) GetNote(id int64) (Note, error) {
+	var n Note
+	err := d.db.QueryRow(
+		"SELECT id, title, content, created_at FROM notes WHERE id = ?", id).
+		Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt)
+	if err != nil {
+		return Note{}, err
+	}
+	n.Tags, err = d.tagsFor(id)
+	if err != nil {
+		return Note{}, err
+	}
+	return n, nil
+}
+
+// ListNotes returns every note, newest first, each with its tags.
+func (d *Database) ListNotes() ([]Note, error) {
+	rows, err := d.db.Query(
+		"SELECT id, title, content, created_at FROM notes ORDER BY created_at DESC, id DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Note
+	for rows.Next() {
+		var n Note
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return d.attachTags(out)
+}
+
+// NotesByIDs returns the notes for the given ids (with tags), in arbitrary order.
+func (d *Database) NotesByIDs(ids []int64) ([]Note, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := d.db.Query(
+		"SELECT id, title, content, created_at FROM notes WHERE id IN ("+placeholders+")", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Note
+	for rows.Next() {
+		var n Note
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return d.attachTags(out)
+}
+
+// AllVectors returns every stored note embedding for brute-force similarity.
+func (d *Database) AllVectors() ([]NoteVector, error) {
+	rows, err := d.db.Query("SELECT note_id, vec FROM note_vectors")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []NoteVector
+	for rows.Next() {
+		var v NoteVector
+		if err := rows.Scan(&v.NoteID, &v.Vec); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// ftsMatch turns free-form user text into a safe FTS5 MATCH expression: each
+// alphanumeric term is double-quoted (neutralizing FTS operators) and OR-joined
+// for recall. Terms shorter than 3 runes are dropped — they're almost all
+// Portuguese/English stopwords ("no", "de", "a", "of") that would match
+// everything; the semantic vector covers any real short query. Returns "" when
+// no usable terms remain.
+func ftsMatch(text string) string {
+	var terms []string
+	for _, f := range strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		if utf8.RuneCountInString(f) < 3 {
+			continue
+		}
+		terms = append(terms, `"`+f+`"`)
+	}
+	return strings.Join(terms, " OR ")
+}
+
+// SearchFTS runs a full-text search over free-form user text and returns
+// matching note ids ranked by bm25 (ascending, best first). Text with no usable
+// terms yields no hits.
+func (d *Database) SearchFTS(text string, limit int) ([]FTSHit, error) {
+	match := ftsMatch(text)
+	if match == "" {
+		return nil, nil
+	}
+	rows, err := d.db.Query(
+		"SELECT rowid, bm25(notes_fts) FROM notes_fts WHERE notes_fts MATCH ? ORDER BY bm25(notes_fts) LIMIT ?",
+		match, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []FTSHit
+	for rows.Next() {
+		var h FTSHit
+		if err := rows.Scan(&h.NoteID, &h.Score); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// DeleteNote removes a note and all of its derived rows.
+func (d *Database) DeleteNote(id int64) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		"DELETE FROM notes WHERE id = ?",
+		"DELETE FROM note_tags WHERE note_id = ?",
+		"DELETE FROM note_vectors WHERE note_id = ?",
+		"DELETE FROM notes_fts WHERE rowid = ?",
+	} {
+		if _, err := tx.Exec(q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (d *Database) tagsFor(noteID int64) ([]string, error) {
+	rows, err := d.db.Query("SELECT tag FROM note_tags WHERE note_id = ? ORDER BY rowid", noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tags []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tags = append(tags, t)
+	}
+	return tags, rows.Err()
+}
+
+// attachTags fills the Tags field of each note with one extra query.
+func (d *Database) attachTags(notes []Note) ([]Note, error) {
+	for i := range notes {
+		tags, err := d.tagsFor(notes[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		notes[i].Tags = tags
+	}
+	return notes, nil
+}
+
+// --- conversations / messages (chat history) ---
 
 func (d *Database) CreateConversation(title, model string) (int64, error) {
 	res, err := d.db.Exec("INSERT INTO conversations (title, model) VALUES (?, ?)", title, model)
@@ -176,65 +402,8 @@ func (d *Database) GetMessages(convID int64) ([]Message, error) {
 	return out, rows.Err()
 }
 
-func (d *Database) CreateNote(title, content string, lineLimit int, mode string) (int64, error) {
-	res, err := d.db.Exec(
-		"INSERT INTO notes (title, content, line_limit, integration_mode) VALUES (?, ?, ?, ?)",
-		title, content, lineLimit, mode)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
-}
-
-func (d *Database) GetNote(id int64) (Note, error) {
-	var n Note
-	var updated sql.NullString
-	err := d.db.QueryRow(
-		"SELECT id, title, content, line_limit, integration_mode, created_at, updated_at FROM notes WHERE id = ?", id).
-		Scan(&n.ID, &n.Title, &n.Content, &n.LineLimit, &n.IntegrationMode, &n.CreatedAt, &updated)
-	if err != nil {
-		return Note{}, err
-	}
-	n.UpdatedAt = updated.String
-	return n, nil
-}
-
-func (d *Database) ListNotes() ([]Note, error) {
-	rows, err := d.db.Query(
-		"SELECT id, title, content, line_limit, integration_mode, created_at, updated_at FROM notes ORDER BY created_at DESC, id DESC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []Note
-	for rows.Next() {
-		var n Note
-		var updated sql.NullString
-		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.LineLimit, &n.IntegrationMode, &n.CreatedAt, &updated); err != nil {
-			return nil, err
-		}
-		n.UpdatedAt = updated.String
-		out = append(out, n)
-	}
-	return out, rows.Err()
-}
-
-func (d *Database) UpdateNoteContent(id int64, content string) error {
-	_, err := d.db.Exec(
-		"UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", content, id)
-	return err
-}
-
-func (d *Database) DeleteNote(id int64) error {
-	_, err := d.db.Exec("DELETE FROM notes WHERE id = ?", id)
-	return err
-}
-
 func (d *Database) DeleteConversation(id int64) error {
-	// SQLite não força foreign keys por padrão e não habilitamos o PRAGMA,
-	// então a remoção em cascata é manual: apagar as mensagens antes da
-	// conversa. Manter esta ordem.
+	// SQLite foreign keys aren't enforced here, so delete messages first.
 	if _, err := d.db.Exec("DELETE FROM messages WHERE conversation_id = ?", id); err != nil {
 		return err
 	}
@@ -246,3 +415,43 @@ func (d *Database) Close() error {
 	return d.db.Close()
 }
 
+// ExtractTitle derives a title from the first line of content, stripped of
+// leading Markdown markers and truncated to 40 runes. Used as a fallback when
+// the AI doesn't supply a title.
+func ExtractTitle(content string) string {
+	content = strings.TrimSpace(content)
+	if i := strings.IndexByte(content, '\n'); i != -1 {
+		content = content[:i]
+	}
+	content = stripMarkdownMarkers(content)
+	if content == "" {
+		return "Nota"
+	}
+	r := []rune(content)
+	const max = 40
+	if len(r) > max {
+		return strings.TrimSpace(string(r[:max])) + "…"
+	}
+	return content
+}
+
+// stripMarkdownMarkers removes common leading Markdown markers (heading, bullet,
+// task, quote) from a line, applied repeatedly for cases like "- [ ] task".
+func stripMarkdownMarkers(s string) string {
+	for {
+		t := strings.TrimSpace(s)
+		switch {
+		case strings.HasPrefix(t, "#"):
+			t = strings.TrimLeft(t, "#")
+		case strings.HasPrefix(t, ">"):
+			t = strings.TrimLeft(t, ">")
+		case strings.HasPrefix(t, "- [ ] "), strings.HasPrefix(t, "- [x] "), strings.HasPrefix(t, "- [X] "):
+			t = t[6:]
+		case strings.HasPrefix(t, "- "), strings.HasPrefix(t, "* "), strings.HasPrefix(t, "+ "):
+			t = t[2:]
+		default:
+			return strings.TrimSpace(t)
+		}
+		s = t
+	}
+}

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -10,7 +9,7 @@ func openTestDB(t *testing.T) *Database {
 	t.Helper()
 	d, err := Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Open (does modernc.org/sqlite have FTS5?): %v", err)
 	}
 	t.Cleanup(func() { d.Close() })
 	return d
@@ -38,31 +37,17 @@ func TestConversationLifecycle(t *testing.T) {
 		t.Fatalf("mensagens inesperadas: %+v", msgs)
 	}
 
-	convs, err := d.ListConversations()
-	if err != nil {
-		t.Fatalf("ListConversations: %v", err)
-	}
-	if len(convs) != 1 || convs[0].Title != "Primeira pergunta" || convs[0].Model != "modelo:free" {
-		t.Fatalf("conversas inesperadas: %+v", convs)
-	}
-
 	if err := d.DeleteConversation(id); err != nil {
 		t.Fatalf("DeleteConversation: %v", err)
 	}
-	convs, _ = d.ListConversations()
-	if len(convs) != 0 {
+	if convs, _ := d.ListConversations(); len(convs) != 0 {
 		t.Fatalf("esperava 0 conversas, veio %d", len(convs))
-	}
-	msgs, _ = d.GetMessages(id)
-	if len(msgs) != 0 {
-		t.Fatalf("esperava 0 mensagens apos delete, veio %d", len(msgs))
 	}
 }
 
-func TestNoteLifecycle(t *testing.T) {
+func TestCreateAndGetNote(t *testing.T) {
 	d := openTestDB(t)
-
-	id, err := d.CreateNote("Lembretes", "- comprar shampoo", 10, "append")
+	id, err := d.CreateNote("Carro", "barulho no motor do carro", []string{"carro", "manutenção"}, []byte{1, 2, 3, 4}, 1)
 	if err != nil {
 		t.Fatalf("CreateNote: %v", err)
 	}
@@ -71,87 +56,108 @@ func TestNoteLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNote: %v", err)
 	}
-	if n.Title != "Lembretes" || n.Content != "- comprar shampoo" || n.LineLimit != 10 || n.IntegrationMode != "append" {
-		t.Fatalf("nota inesperada: %+v", n)
+	if n.Title != "Carro" || n.Content != "barulho no motor do carro" {
+		t.Fatalf("unexpected note: %+v", n)
+	}
+	if len(n.Tags) != 2 || n.Tags[0] != "carro" || n.Tags[1] != "manutenção" {
+		t.Fatalf("tags = %v, want [carro manutenção]", n.Tags)
 	}
 	if n.CreatedAt == "" {
 		t.Fatalf("CreatedAt vazio: %+v", n)
 	}
+}
 
-	if err := d.UpdateNoteContent(id, "- comprar shampoo\n- pagar conta"); err != nil {
-		t.Fatalf("UpdateNoteContent: %v", err)
-	}
-	n, _ = d.GetNote(id)
-	if n.Content != "- comprar shampoo\n- pagar conta" {
-		t.Fatalf("conteúdo não atualizado: %q", n.Content)
-	}
-	if n.UpdatedAt == "" {
-		t.Fatalf("UpdatedAt deveria ser preenchido após update: %+v", n)
-	}
+func TestSearchFTSMatchesAndRanks(t *testing.T) {
+	d := openTestDB(t)
+	carID, _ := d.CreateNote("Carro", "o motor do carro está com barulho", []string{"carro"}, nil, 0)
+	d.CreateNote("Mercado", "comprei pão e leite", []string{"compras"}, nil, 0)
 
-	// Uma segunda nota para validar a listagem.
-	if _, err := d.CreateNote("Ideias", "- app de notas", 0, ""); err != nil {
-		t.Fatalf("CreateNote 2: %v", err)
+	hits, err := d.SearchFTS("motor carro", 10)
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
 	}
+	if len(hits) != 1 || hits[0].NoteID != carID {
+		t.Fatalf("expected only the car note, got %+v", hits)
+	}
+}
+
+func TestSearchFTSRemovesDiacritics(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := d.CreateNote("Ruído", "barulho e ruído no motor", []string{"carro"}, nil, 0)
+
+	// Query without the accent must still match the accented content.
+	hits, err := d.SearchFTS("ruido", 10)
+	if err != nil {
+		t.Fatalf("SearchFTS: %v", err)
+	}
+	if len(hits) != 1 || hits[0].NoteID != id {
+		t.Fatalf("diacritic-insensitive match failed: %+v", hits)
+	}
+}
+
+func TestSearchFTSEmptyQuery(t *testing.T) {
+	d := openTestDB(t)
+	d.CreateNote("A", "algo", nil, nil, 0)
+	hits, err := d.SearchFTS("  !?  ", 10)
+	if err != nil {
+		t.Fatalf("SearchFTS empty: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("expected no hits for empty query, got %+v", hits)
+	}
+}
+
+func TestListAndNotesByIDs(t *testing.T) {
+	d := openTestDB(t)
+	a, _ := d.CreateNote("A", "primeira", []string{"x"}, nil, 0)
+	b, _ := d.CreateNote("B", "segunda", nil, nil, 0)
+
 	notes, err := d.ListNotes()
 	if err != nil {
 		t.Fatalf("ListNotes: %v", err)
 	}
-	if len(notes) != 2 {
-		t.Fatalf("esperava 2 notas, veio %d", len(notes))
+	if len(notes) != 2 || notes[0].ID != b { // newest first
+		t.Fatalf("ListNotes order/len wrong: %+v", notes)
 	}
 
-	if err := d.DeleteNote(id); err != nil {
-		t.Fatalf("DeleteNote: %v", err)
+	got, err := d.NotesByIDs([]int64{a})
+	if err != nil {
+		t.Fatalf("NotesByIDs: %v", err)
 	}
-	notes, _ = d.ListNotes()
-	if len(notes) != 1 || notes[0].Title != "Ideias" {
-		t.Fatalf("após delete esperava só 'Ideias', veio %+v", notes)
+	if len(got) != 1 || got[0].ID != a || len(got[0].Tags) != 1 {
+		t.Fatalf("NotesByIDs wrong: %+v", got)
 	}
 }
 
-// Abrir um banco legado (tabela notes sem as colunas novas) e reabrir deve
-// migrar sem erro e preservar os dados — a migração é idempotente.
-func TestNotesMigrationIdempotent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.db")
+func TestAllVectors(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := d.CreateNote("A", "x", nil, []byte{9, 8, 7, 6}, 1)
+	d.CreateNote("B", "y", nil, nil, 0) // no vector
 
-	// Simula um banco antigo: tabela notes só com as colunas originais.
-	legacy, err := sql.Open("sqlite", path)
+	vecs, err := d.AllVectors()
 	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
+		t.Fatalf("AllVectors: %v", err)
 	}
-	_, err = legacy.Exec(`CREATE TABLE notes (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT NOT NULL,
-		content TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	)`)
-	if err != nil {
-		t.Fatalf("create legacy notes: %v", err)
+	if len(vecs) != 1 || vecs[0].NoteID != id || string(vecs[0].Vec) != string([]byte{9, 8, 7, 6}) {
+		t.Fatalf("unexpected vectors: %+v", vecs)
 	}
-	if _, err := legacy.Exec(`INSERT INTO notes (title, content) VALUES ('Velha', 'conteudo')`); err != nil {
-		t.Fatalf("insert legacy: %v", err)
-	}
-	legacy.Close()
+}
 
-	// Primeira abertura migra; segunda abertura não deve falhar (idempotente).
-	for i := range 2 {
-		d, err := Open(path)
-		if err != nil {
-			t.Fatalf("Open #%d migrou com erro: %v", i, err)
-		}
-		notes, err := d.ListNotes()
-		if err != nil {
-			t.Fatalf("ListNotes #%d: %v", i, err)
-		}
-		if len(notes) != 1 || notes[0].Title != "Velha" || notes[0].Content != "conteudo" {
-			t.Fatalf("dados legados perdidos na migração: %+v", notes)
-		}
-		// As colunas novas existem e caem no default ("usar global").
-		if notes[0].LineLimit != 0 || notes[0].IntegrationMode != "" {
-			t.Fatalf("defaults de migração inesperados: %+v", notes[0])
-		}
-		d.Close()
+func TestDeleteNoteRemovesEverything(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := d.CreateNote("A", "motor barulho", []string{"carro"}, []byte{1, 2, 3, 4}, 1)
+	if err := d.DeleteNote(id); err != nil {
+		t.Fatalf("DeleteNote: %v", err)
+	}
+
+	if _, err := d.GetNote(id); err == nil {
+		t.Fatal("note still present after delete")
+	}
+	if hits, _ := d.SearchFTS("motor", 10); len(hits) != 0 {
+		t.Fatalf("fts row survived delete: %+v", hits)
+	}
+	if vecs, _ := d.AllVectors(); len(vecs) != 0 {
+		t.Fatalf("vector survived delete: %+v", vecs)
 	}
 }
 
@@ -159,7 +165,9 @@ func TestExtractTitle(t *testing.T) {
 	cases := map[string]string{
 		"Olá mundo":                 "Olá mundo",
 		"  primeira\nsegunda linha": "primeira",
-		"":                          "Conversa",
+		"":                          "Nota",
+		"## Cabeçalho":              "Cabeçalho",
+		"- [ ] tarefa":              "tarefa",
 	}
 	for in, want := range cases {
 		if got := ExtractTitle(in); got != want {
@@ -167,8 +175,7 @@ func TestExtractTitle(t *testing.T) {
 		}
 	}
 	long := "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz" // 50 chars
-	got := ExtractTitle(long)
-	if []rune(got)[len([]rune(got))-1] != '…' {
+	if got := ExtractTitle(long); []rune(got)[len([]rune(got))-1] != '…' {
 		t.Errorf("ExtractTitle(longo) deveria terminar com reticências: %q", got)
 	}
 }

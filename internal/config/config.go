@@ -68,23 +68,6 @@ type Config struct {
 	// Opacity is the background opacity of the palette shell, 0–100 (percent).
 	// Higher is more opaque; the remainder lets the acrylic backdrop show through.
 	Opacity int `json:"opacity"`
-	// NotesLineLimit é o teto de linhas padrão de uma nota antes de o sistema
-	// oferecer resumo/divisão. NotesIntegrationMode escolhe como uma anotação
-	// entra na nota: "append" (cola a linha) ou "rewrite" (a IA reorganiza tudo).
-	NotesLineLimit       int    `json:"notes_line_limit"`
-	NotesIntegrationMode string `json:"notes_integration_mode"`
-}
-
-// NotesModes são os valores válidos de NotesIntegrationMode.
-var NotesModes = []string{"append", "rewrite"}
-
-func isValidNotesMode(mode string) bool {
-	for _, m := range NotesModes {
-		if m == mode {
-			return true
-		}
-	}
-	return false
 }
 
 func Default() *Config {
@@ -99,8 +82,6 @@ func Default() *Config {
 		APIKey:               "",
 		SystemPrompt:         "Responda de forma direta e objetiva.",
 		Opacity:              85,
-		NotesLineLimit:       30,
-		NotesIntegrationMode: "append",
 	}
 }
 
@@ -163,12 +144,6 @@ func Load() *Config {
 	}
 	if loaded.Opacity > 100 {
 		loaded.Opacity = 100
-	}
-	if loaded.NotesLineLimit <= 0 {
-		loaded.NotesLineLimit = cfg.NotesLineLimit
-	}
-	if !isValidNotesMode(loaded.NotesIntegrationMode) {
-		loaded.NotesIntegrationMode = cfg.NotesIntegrationMode
 	}
 	// APIKey vazio é válido: cai para a variável de ambiente em ResolveAPIKey.
 	return &loaded

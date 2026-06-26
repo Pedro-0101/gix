@@ -30,38 +30,6 @@ func TestParseDotEnv(t *testing.T) {
 	}
 }
 
-func TestDefaultNotesSettings(t *testing.T) {
-	c := Default()
-	if c.NotesLineLimit != 30 {
-		t.Errorf("NotesLineLimit default = %d, want 30", c.NotesLineLimit)
-	}
-	if c.NotesIntegrationMode != "append" {
-		t.Errorf("NotesIntegrationMode default = %q, want %q", c.NotesIntegrationMode, "append")
-	}
-}
-
-func TestLoadFallsBackOnInvalidNotesSettings(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("AppData", dir)
-	// Config com valores inválidos para as notas: limite <= 0 e modo desconhecido.
-	cfgJSON := `{"notes_line_limit": 0, "notes_integration_mode": "nonsense"}`
-	if err := os.WriteFile(filepath.Join(dir, "gix", "config.json"), []byte(cfgJSON), 0o644); err != nil {
-		// O diretório pode não existir ainda; cria e tenta de novo.
-		_ = os.MkdirAll(filepath.Join(dir, "gix"), 0o755)
-		if err := os.WriteFile(filepath.Join(dir, "gix", "config.json"), []byte(cfgJSON), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	c := Load()
-	if c.NotesLineLimit != 30 {
-		t.Errorf("limite inválido deveria cair para 30, veio %d", c.NotesLineLimit)
-	}
-	if c.NotesIntegrationMode != "append" {
-		t.Errorf("modo inválido deveria cair para 'append', veio %q", c.NotesIntegrationMode)
-	}
-}
-
 func TestResolveAPIKeyPrefersConfig(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "do-ambiente")
 	c := &Config{APIKey: "das-settings"}

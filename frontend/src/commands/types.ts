@@ -1,16 +1,48 @@
 import type { Choice } from './interaction'
 
 // The view the shell can show. Mirrors the `View` union in App.tsx.
-export type View = 'chat' | 'settings' | 'history' | 'notes'
+export type View = 'chat' | 'settings' | 'history' | 'notes' | 'search'
 
-// The outcome of a note action, mirrored structurally from the Go RouteResult
-// (bindings). Kept as a local interface so commands stay decoupled from the
-// generated binding class.
-export interface NoteResult {
+// Outcomes of the note actions, mirrored structurally from the Go results
+// (bindings). Kept as local interfaces so commands stay decoupled from the
+// generated binding classes.
+export interface CaptureResult {
   status: string
-  noteTitle: string
   noteId: number
+  noteTitle: string
+  tags: string[]
   message: string
+}
+
+// One ranked search hit (Go app.SearchResult).
+export interface SearchHit {
+  noteId: number
+  title: string
+  snippet: string
+  content: string
+  tags: string[]
+  score: number
+}
+
+// Result of an /ask: an AI summary plus the source notes (Go app.AskResult).
+export interface AskResult {
+  status: string
+  summary: string
+  sources: SearchHit[]
+  message: string
+}
+
+// The state driving the search view, set via CommandContext.openSearch. While
+// `loading` is true the view shows a spinner; for mode 'ask' the summary panel
+// renders once the answer arrives.
+export type SearchMode = 'find' | 'ask'
+export interface SearchState {
+  query: string
+  mode: SearchMode
+  loading: boolean
+  hits: SearchHit[]
+  summary?: string
+  status?: string
 }
 
 // CommandContext is the abstraction a command depends on (Dependency Inversion):
@@ -45,12 +77,15 @@ export interface CommandContext {
     // The valid model ids, for the `model` field's choices.
     models(): Promise<string[]>
   }
-  // Notes access: route a quick capture to a note, or resolve an overflowing
-  // note with a chosen strategy ('summarize' | 'part2' | 'split').
+  // Notes access: capture a quick note, search (no AI), or ask (search + AI
+  // summary). The search commands push results to the view via openSearch.
   notes: {
-    route(text: string): Promise<NoteResult>
-    resolveOverflow(noteId: number, text: string, strategy: string): Promise<NoteResult>
+    capture(text: string): Promise<CaptureResult>
+    find(query: string): Promise<SearchHit[]>
+    ask(query: string): Promise<AskResult>
   }
+  // Opens the search view with the given state (loading, then results).
+  openSearch(state: SearchState): void
 }
 
 // A single command. Adding one is the whole story: drop an object implementing

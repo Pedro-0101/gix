@@ -13,5 +13,7 @@ export {
 };
 
 export type {
-    RouteResult
+    AskResult,
+    CaptureResult,
+    SearchResult
 } from "./models.js";

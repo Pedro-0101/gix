@@ -353,6 +353,44 @@ func TestDeleteRemovesNote(t *testing.T) {
 	}
 }
 
+func TestCaptureDetectsAlertWhenTimeBound(t *testing.T) {
+	d := notesTestDB(t)
+	fake := &fakeCompleter{responses: []string{
+		`{"title":"Médico","content":"consulta","tags":["saude"],"alert":{"message":"ligar pro médico","fire_at":"2099-04-01T09:00:00-03:00","recurrence":null}}`,
+	}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Capture("ligar pro médico amanhã 9h")
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	if res.Status != "created" {
+		t.Fatalf("nota deveria ser criada, veio %+v", res)
+	}
+	if res.Alert == nil || res.Alert.Message != "ligar pro médico" {
+		t.Fatalf("esperava proposta de alerta, veio %+v", res.Alert)
+	}
+	if res.Alert.FireAt != "2099-04-01T09:00:00-03:00" {
+		t.Fatalf("fire_at da proposta = %q", res.Alert.FireAt)
+	}
+}
+
+func TestCaptureNoAlertWhenNotTimeBound(t *testing.T) {
+	d := notesTestDB(t)
+	fake := &fakeCompleter{responses: []string{
+		`{"title":"Ideia","content":"comprar leite","tags":["mercado"],"alert":null}`,
+	}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, _ := svc.Capture("ideia: comprar leite")
+	if res.Status != "created" {
+		t.Fatalf("nota deveria ser criada, veio %+v", res)
+	}
+	if res.Alert != nil {
+		t.Fatalf("não deveria propor alerta, veio %+v", res.Alert)
+	}
+}
+
 func TestSnippetSingleLineAndTruncates(t *testing.T) {
 	if s := snippet("uma\nnota\ncurta"); s != "uma nota curta" {
 		t.Fatalf("snippet flatten failed: %q", s)

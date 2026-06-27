@@ -64,26 +64,37 @@ func (s *NotesService) List() ([]db.Note, error) {
 
 // --- capture ---
 
+// AlertProposal é um lembrete que o modelo de captura detectou dentro da nota.
+// FireAt é ISO 8601 com offset (como o modelo retornou); Recurrence é JSON
+// marshalado ou "". Presente só quando a nota tem horário/data concretos.
+type AlertProposal struct {
+	Message    string `json:"message"`
+	FireAt     string `json:"fireAt"`
+	Recurrence string `json:"recurrence"`
+}
+
 // CaptureResult is what the frontend gets after a /note.
 //
 //	"created"    note stored
 //	"no_api_key" the API key is missing
 //	"error"      failure (see Message)
 type CaptureResult struct {
-	Status    string   `json:"status"`
-	NoteID    int64    `json:"noteId"`
-	NoteTitle string   `json:"noteTitle"`
-	Tags      []string `json:"tags"`
-	Message   string   `json:"message"`
-	Tokens    int      `json:"tokens"`
-	Cost      float64  `json:"cost"`
+	Status    string         `json:"status"`
+	NoteID    int64          `json:"noteId"`
+	NoteTitle string         `json:"noteTitle"`
+	Tags      []string       `json:"tags"`
+	Message   string         `json:"message"`
+	Tokens    int            `json:"tokens"`
+	Cost      float64        `json:"cost"`
+	Alert     *AlertProposal `json:"alert"`
 }
 
 // captureDecision is the JSON the model returns when formatting a capture.
 type captureDecision struct {
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags"`
+	Title   string         `json:"title"`
+	Content string         `json:"content"`
+	Tags    []string       `json:"tags"`
+	Alert   *alertDecision `json:"alert"`
 }
 
 // Capture formats a quick note with the AI (title + Markdown body + tags),
@@ -133,12 +144,24 @@ func (s *NotesService) Capture(text string) (CaptureResult, error) {
 		}
 	}
 
+	var proposal *AlertProposal
+	if dec.Alert != nil {
+		rec := marshalRecurrence(dec.Alert.Recurrence)
+		if futureOrRecurring(dec.Alert.FireAt, rec, time.Now()) {
+			msg := strings.TrimSpace(dec.Alert.Message)
+			if msg == "" {
+				msg = title
+			}
+			proposal = &AlertProposal{Message: msg, FireAt: strings.TrimSpace(dec.Alert.FireAt), Recurrence: rec}
+		}
+	}
+
 	id, err := s.db.CreateNote(title, content, tags, vec, dim)
 	if err != nil {
 		return CaptureResult{}, err
 	}
 	tokens, cost := usageCost(usage, cfg.Model)
-	return CaptureResult{Status: "created", NoteID: id, NoteTitle: title, Tags: tags, Tokens: tokens, Cost: cost}, nil
+	return CaptureResult{Status: "created", NoteID: id, NoteTitle: title, Tags: tags, Tokens: tokens, Cost: cost, Alert: proposal}, nil
 }
 
 // --- update / delete ---
@@ -512,8 +535,9 @@ A data e hora atuais são: %s.
 Resolva qualquer data relativa ("amanhã", "sexta") para uma data absoluta no texto.
 Formate "content" como Markdown bem estruturado (parágrafo, lista, tarefa "- [ ]", ou pequena seção) — preserve a informação do usuário, sem inventar nem remover.
 Gere um "title" curto (sem marcadores Markdown) e de 1 a 5 "tags" temáticas, minúsculas, sem "#".
+Se — e somente se — a nota descrever um lembrete com horário/data concretos, inclua "alert" com o horário resolvido; caso contrário use "alert": null.
 Responda APENAS com JSON, sem cercas:
-{"title":"<título curto>","content":"<Markdown da nota>","tags":["tag1","tag2"]}`,
+{"title":"<título curto>","content":"<Markdown da nota>","tags":["tag1","tag2"],"alert":null ou {"message":"<lembrete curto>","fire_at":"<ISO 8601 com offset>","recurrence":null ou {"freq":"daily|weekly|monthly|yearly","interval":1,"weekday":"mon","time":"09:00"}}}`,
 		now.Format("2006-01-02 15:04 (Monday)"))
 	return []ai.Message{
 		{Role: "system", Content: system},

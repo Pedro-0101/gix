@@ -59,6 +59,13 @@ export function Done(id: number): $CancellablePromise<void> {
 }
 
 /**
+ * GetAlertNoteID returns the note_id of an alert, or nil if unlinked.
+ */
+export function GetAlertNoteID(id: number): $CancellablePromise<number | null> {
+    return $Call.ByID(2510878826, id);
+}
+
+/**
  * List returns alerts the manager shows: pending and done, fire_at ascending.
  */
 export function List(): $CancellablePromise<db$0.Alert[] | null> {

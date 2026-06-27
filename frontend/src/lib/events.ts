@@ -25,9 +25,11 @@ export type AlertFiredPayload = { id: number; message: string; noteId: number | 
 export const onAlertFired = (cb: (a: AlertFiredPayload) => void) =>
   Events.On('alert:fired', (e) => cb(e.data as AlertFiredPayload))
 
-// Fired when the user clicks a toast body — open the alerts view focused on it.
-export const onAlertOpen = (cb: (id: number) => void) =>
-  Events.On('alert:open', (e) => cb((e.data as { id: number }).id))
+export type AlertOpenPayload = { id: number; noteId: number | null }
+
+// Fired when the user clicks a toast body — open the alerts view (or the linked note).
+export const onAlertOpen = (cb: (p: AlertOpenPayload) => void) =>
+  Events.On('alert:open', (e) => cb(e.data as AlertOpenPayload))
 
 export type AlertProposedPayload = { message: string; fireAt: string; recurrence: string }
 

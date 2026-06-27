@@ -156,16 +156,24 @@ export default function App() {
     return () => { offDelta(); offDone(); offErr(); offUsage() }
   }, [lang])
 
-  // Live alert wiring: a fired alert posts a system card; clicking a toast body
-  // (alert:open) jumps to the alerts view focused on that alert.
-  useEffect(() => {
-    const offFired = onAlertFired((a) => {
-      setView('chat')
-      setMsgs((m) => [...m, { role: 'system', content: `${tr(lang, 'alert_created')} **${a.message}**` }])
-    })
-    const offOpen = onAlertOpen((id) => { setAlertFocusId(id); setView('alerts') })
-    return () => { offFired(); offOpen() }
-  }, [lang])
+	// Live alert wiring: a fired alert posts a system card; clicking a toast body
+	// (alert:open) jumps to the alerts view focused on that alert, or to the linked note.
+	useEffect(() => {
+		const offFired = onAlertFired((a) => {
+			setView('chat')
+			setMsgs((m) => [...m, { role: 'system', content: `${tr(lang, 'alert_created')} **${a.message}**` }])
+		})
+		const offOpen = onAlertOpen(({ id, noteId }) => {
+			if (noteId) {
+				setPendingNoteId(noteId)
+				setView('notes')
+			} else {
+				setAlertFocusId(id)
+				setView('alerts')
+			}
+		})
+		return () => { offFired(); offOpen() }
+	}, [lang])
 
   // Proposed alert wiring: a tool-call result from the AI proposes an alert;
   // the shell asks the user to confirm before scheduling it.
@@ -335,6 +343,7 @@ export default function App() {
     }
     setInteraction(null)
     resolve?.(choice.value)
+    requestAnimationFrame(() => taRef.current?.focus())
   }
 
   // Finalize the active `prompt`: validate the typed value; on success record it

@@ -162,7 +162,8 @@ func Run(assets fs.FS, trayIcon []byte) error {
 			_ = alertsSvc.Done(id)
 		default: // DEFAULT_ACTION: user clicked the toast body
 			showMain()
-			emit("alert:open", map[string]any{"id": id})
+			noteID, _ := alertsSvc.GetAlertNoteID(id)
+			emit("alert:open", map[string]any{"id": id, "noteId": noteID})
 		}
 	})
 

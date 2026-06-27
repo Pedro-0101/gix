@@ -187,3 +187,50 @@ func TestStreamToolsAccumulatesToolCallDeltas(t *testing.T) {
 		t.Fatalf("usage = %+v", usage)
 	}
 }
+
+func TestStreamToolsMultipleToolCalls(t *testing.T) {
+	sse := strings.Join([]string{
+		// index 0 começa (nome + início dos args)
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"create_alert","arguments":"{\"message\":\"a\","}}]}}]}`,
+		// index 1 começa (nome + args completos numa só delta)
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"name":"create_note","arguments":"{\"title\":\"b\"}"}}]}}]}`,
+		// index 0 termina (resto dos args, split em duas deltas)
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"fire_at\":\"2099-01-01T09:00:00-03:00\""}}]}}]}`,
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}}]}`,
+		`data: {"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`,
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sse))
+	}))
+	defer srv.Close()
+
+	c := New("k")
+	c.baseURL = srv.URL
+
+	var text strings.Builder
+	_, calls, err := c.StreamTools(context.Background(), "m",
+		[]Message{{Role: "user", Content: "oi"}}, []Tool{{Type: "function"}},
+		func(s string) { text.WriteString(s) })
+	if err != nil {
+		t.Fatalf("StreamTools: %v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("esperava 2 tool calls, veio %+v", calls)
+	}
+	if calls[0].Name != "create_alert" {
+		t.Fatalf("call[0].Name = %q, esperava create_alert", calls[0].Name)
+	}
+	if calls[0].Arguments != `{"message":"a","fire_at":"2099-01-01T09:00:00-03:00"}` {
+		t.Fatalf("call[0].Arguments = %q", calls[0].Arguments)
+	}
+	if calls[1].Name != "create_note" {
+		t.Fatalf("call[1].Name = %q, esperava create_note", calls[1].Name)
+	}
+	if calls[1].Arguments != `{"title":"b"}` {
+		t.Fatalf("call[1].Arguments = %q", calls[1].Arguments)
+	}
+}

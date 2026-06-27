@@ -201,4 +201,123 @@ func TestChatServiceEmitsAlertProposedOnToolCall(t *testing.T) {
 	if !ok || p.Message != "remédio" || p.FireAt != "2099-01-01T09:00:00-03:00" {
 		t.Fatalf("payload inesperado: %+v", proposed)
 	}
+	if p.Recurrence != "" {
+		t.Fatalf("recurrence null deveria virar \"\", veio %q", p.Recurrence)
+	}
+}
+
+func TestChatServiceEmitsBothDoneAndAlertProposedWhenTextAndToolCall(t *testing.T) {
+	t.Setenv("AppData", t.TempDir())
+	d, err := db.Open(filepath.Join(t.TempDir(), "c4.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+
+	var mu sync.Mutex
+	events := map[string]int{}
+	var doneContent string
+	var proposed any
+	emit := func(name string, data any) {
+		mu.Lock()
+		defer mu.Unlock()
+		events[name]++
+		if name == "chat:done" {
+			doneContent = data.(DonePayload).Content
+		}
+		if name == "alert:proposed" {
+			proposed = data
+		}
+	}
+
+	cfgSvc := NewConfigService()
+	cur := cfgSvc.Current()
+	cur.APIKey = "k"
+	_ = cfgSvc.Save(*cur)
+
+	fake := &fakeStreamer{
+		deltas:    []string{"ok"},
+		usage:     &ai.Usage{TotalTokens: 3},
+		toolCalls: []ai.ToolCall{{Name: "create_alert", Arguments: `{"message":"remédio","fire_at":"2099-01-01T09:00:00-03:00","recurrence":null}`}},
+	}
+	s := NewChatService(cfgSvc, d, emit, func(string) Streamer { return fake })
+
+	s.Send("me lembra do remédio amanhã 9h e me confirma")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := events["chat:done"]
+		mu.Unlock()
+		if got > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if events["alert:proposed"] != 1 {
+		t.Fatalf("esperava 1 alert:proposed, veio %d", events["alert:proposed"])
+	}
+	if events["chat:done"] != 1 {
+		t.Fatalf("texto + tool call deveria emitir 1 chat:done, veio %d", events["chat:done"])
+	}
+	if doneContent != "ok" {
+		t.Fatalf("conteúdo do done = %q, esperava \"ok\"", doneContent)
+	}
+	p, ok := proposed.(alertProposedPayload)
+	if !ok || p.Message != "remédio" {
+		t.Fatalf("payload inesperado: %+v", proposed)
+	}
+}
+
+func TestChatServiceMalformedToolCallFallsThroughToDone(t *testing.T) {
+	t.Setenv("AppData", t.TempDir())
+	d, err := db.Open(filepath.Join(t.TempDir(), "c5.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+
+	var mu sync.Mutex
+	events := map[string]int{}
+	emit := func(name string, data any) {
+		mu.Lock()
+		defer mu.Unlock()
+		events[name]++
+	}
+
+	cfgSvc := NewConfigService()
+	cur := cfgSvc.Current()
+	cur.APIKey = "k"
+	_ = cfgSvc.Save(*cur)
+
+	fake := &fakeStreamer{
+		usage:     &ai.Usage{TotalTokens: 3},
+		toolCalls: []ai.ToolCall{{Name: "create_alert", Arguments: `{not json`}},
+	}
+	s := NewChatService(cfgSvc, d, emit, func(string) Streamer { return fake })
+
+	s.Send("me lembra de algo")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := events["chat:done"]
+		mu.Unlock()
+		if got > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if events["alert:proposed"] != 0 {
+		t.Fatalf("tool call malformado não deveria propor alerta, veio %d", events["alert:proposed"])
+	}
+	if events["chat:done"] != 1 {
+		t.Fatalf("esperava 1 chat:done no fallback, veio %d", events["chat:done"])
+	}
 }

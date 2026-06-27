@@ -138,6 +138,59 @@ func TestCreateForNoteDefaultsMessageToNoteTitle(t *testing.T) {
 	}
 }
 
+func TestCreateProposedStoresFutureAndRejectsPast(t *testing.T) {
+	d := alertsTestDB(t)
+	svc := newAlertsSvc(t, d, &fakeCompleter{})
+
+	res, err := svc.CreateProposed("dentista", "2099-05-05T09:00:00-03:00", "", nil)
+	if err != nil {
+		t.Fatalf("CreateProposed: %v", err)
+	}
+	if res.Status != "created" || res.Message != "dentista" || res.AlertID == 0 {
+		t.Fatalf("esperava created, veio %+v", res)
+	}
+
+	past, _ := svc.CreateProposed("velho", "2000-01-01T09:00:00-03:00", "", nil)
+	if past.Status != "past" {
+		t.Fatalf("esperava past, veio %+v", past)
+	}
+	if all, _ := d.ListAlerts(); len(all) != 1 {
+		t.Fatalf("só o futuro deveria estar gravado, veio %d", len(all))
+	}
+}
+
+func TestCreateProposedLinksNoteAndKeepsRecurrence(t *testing.T) {
+	d := alertsTestDB(t)
+	noteID, _ := d.CreateNote("Pagar conta", "boleto", nil, nil, 0)
+	svc := newAlertsSvc(t, d, &fakeCompleter{})
+
+	res, _ := svc.CreateProposed("Pagar conta", "2000-01-01T08:00:00-03:00",
+		`{"freq":"monthly","interval":1}`, &noteID)
+	if res.Status != "created" {
+		t.Fatalf("recorrente no passado deveria gravar, veio %+v", res)
+	}
+	stored, _ := d.GetAlert(res.AlertID)
+	if stored.NoteID == nil || *stored.NoteID != noteID {
+		t.Fatalf("esperava vínculo com a nota, veio %+v", stored)
+	}
+}
+
+func TestFutureOrRecurring(t *testing.T) {
+	now := time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)
+	if futureOrRecurring("2020-01-01T09:00:00-03:00", "", now) {
+		t.Fatal("passado sem recorrência não deveria valer")
+	}
+	if !futureOrRecurring("2020-01-01T09:00:00-03:00", `{"freq":"daily","interval":1}`, now) {
+		t.Fatal("recorrente deveria valer mesmo no passado")
+	}
+	if !futureOrRecurring("2099-01-01T09:00:00-03:00", "", now) {
+		t.Fatal("futuro deveria valer")
+	}
+	if futureOrRecurring("data ruim", "", now) {
+		t.Fatal("data inválida não deveria valer")
+	}
+}
+
 func alertsTestDB(t *testing.T) *db.Database {
 	t.Helper()
 	d, err := db.Open(t.TempDir() + "/notes.db")

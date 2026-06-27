@@ -103,31 +103,37 @@ func (s *AlertsService) createFromWhen(text, defaultMessage string, noteID *int6
 	if err != nil {
 		return CreateAlertResult{Status: "unparseable"}, nil
 	}
+	return s.store(dec.Message, dec.FireAt, marshalRecurrence(dec.Recurrence), defaultMessage, noteID), nil
+}
 
-	fireAt, err := time.Parse(time.RFC3339, strings.TrimSpace(dec.FireAt))
+// store valida campos já parseados e grava o alerta (sem IA). defaultMessage
+// (ex.: título da nota) é usado quando message vem vazio.
+func (s *AlertsService) store(message, fireAtISO, recurrence, defaultMessage string, noteID *int64) CreateAlertResult {
+	if s.db == nil {
+		return CreateAlertResult{Status: "error"}
+	}
+	fireAt, err := time.Parse(time.RFC3339, strings.TrimSpace(fireAtISO))
 	if err != nil {
-		return CreateAlertResult{Status: "unparseable"}, nil
+		return CreateAlertResult{Status: "unparseable"}
 	}
 	fireAt = fireAt.UTC()
 
-	message := strings.TrimSpace(dec.Message)
+	message = strings.TrimSpace(message)
 	if message == "" {
 		message = strings.TrimSpace(defaultMessage)
 	}
 	if message == "" {
-		return CreateAlertResult{Status: "unparseable"}, nil
+		return CreateAlertResult{Status: "unparseable"}
 	}
-
-	recurrence := marshalRecurrence(dec.Recurrence)
 	// A one-shot in the past is an error; a recurring rule is fine (the scheduler
 	// will advance it to the next future occurrence on the first tick).
 	if recurrence == "" && !fireAt.After(time.Now()) {
-		return CreateAlertResult{Status: "past"}, nil
+		return CreateAlertResult{Status: "past"}
 	}
 
 	id, err := s.db.CreateAlert(db.Alert{Message: message, NoteID: noteID, FireAt: fireAt, Recurrence: recurrence})
 	if err != nil {
-		return CreateAlertResult{Status: "error"}, nil
+		return CreateAlertResult{Status: "error"}
 	}
 	return CreateAlertResult{
 		Status:      "created",
@@ -135,7 +141,23 @@ func (s *AlertsService) createFromWhen(text, defaultMessage string, noteID *int6
 		Message:     message,
 		FireAtLocal: fireAt.In(s.loc).Format(time.RFC3339),
 		Recurrence:  recurrence,
-	}, nil
+	}
+}
+
+// CreateProposed grava um alerta a partir de campos já parseados (sem chamar a
+// IA). Usado quando o chat (tool call) ou um /note já produziu o horário.
+func (s *AlertsService) CreateProposed(message, fireAtISO, recurrence string, noteID *int64) (CreateAlertResult, error) {
+	return s.store(message, fireAtISO, recurrence, "", noteID), nil
+}
+
+// futureOrRecurring diz se um alerta parseado vale a pena propor: fire time
+// válido que seja recorrente ou ainda no futuro.
+func futureOrRecurring(fireAtISO, recurrence string, now time.Time) bool {
+	fireAt, err := time.Parse(time.RFC3339, strings.TrimSpace(fireAtISO))
+	if err != nil {
+		return false
+	}
+	return recurrence != "" || fireAt.After(now)
 }
 
 // parseWhen runs one AI call to turn natural-language timing into an absolute

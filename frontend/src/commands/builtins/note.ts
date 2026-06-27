@@ -43,6 +43,14 @@ export const noteCommand: Command = {
               ctx.emitSystemMessage(`${tr(ctx.lang, 'alert_created')} **${ar.message}**${sfx ? `  _${sfx}_` : ''}`)
             }
           }
+        } else if (/crie\s+um\s+(alerta|lembrete|alarme)/i.test(text)) {
+          const ar = await ctx.alerts.create(text)
+          if (ar.status === 'created') {
+            const w = formatFireAt(ar.fireAtLocal, ctx.lang)
+            const r = recurrenceLabel(ctx.lang, ar.recurrence)
+            const sfx = [w, r].filter(Boolean).join(' · ')
+            ctx.emitSystemMessage(`${tr(ctx.lang, 'alert_created')} **${ar.message}**${sfx ? `  _${sfx}_` : ''}`)
+          }
         }
         return
       }

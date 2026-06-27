@@ -61,7 +61,28 @@ type CreateAlertResult struct {
 type alertDecision struct {
 	Message    string          `json:"message"`
 	FireAt     string          `json:"fire_at"`    // ISO 8601 with offset
+	FireAtCamel string         `json:"fireAt"`     // fallback: some models output camelCase
 	Recurrence *recurrenceRule `json:"recurrence"` // null = one-shot
+}
+
+// UnmarshalJSON handles both fire_at and fireAt field names from the model.
+func (a *alertDecision) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Message    string          `json:"message"`
+		FireAt     string          `json:"fire_at"`
+		FireAtCamel string         `json:"fireAt"`
+		Recurrence *recurrenceRule `json:"recurrence"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	a.Message = raw.Message
+	a.FireAt = raw.FireAt
+	if a.FireAt == "" {
+		a.FireAt = raw.FireAtCamel
+	}
+	a.Recurrence = raw.Recurrence
+	return nil
 }
 
 // Create turns a natural-language reminder into a stored alert (1 AI call).
@@ -127,7 +148,7 @@ func (s *AlertsService) store(message, fireAtISO, recurrence, defaultMessage str
 	}
 	// A one-shot in the past is an error; a recurring rule is fine (the scheduler
 	// will advance it to the next future occurrence on the first tick).
-	if recurrence == "" && !fireAt.After(time.Now()) {
+	if recurrence == "" && !fireAt.Add(gracePeriod).After(time.Now()) {
 		return CreateAlertResult{Status: "past"}
 	}
 
@@ -152,12 +173,17 @@ func (s *AlertsService) CreateProposed(message, fireAtISO, recurrence string, no
 
 // futureOrRecurring diz se um alerta parseado vale a pena propor: fire time
 // válido que seja recorrente ou ainda no futuro.
+// gracePeriod is a small tolerance so near-future alerts aren't rejected due to
+// API latency (the time between the AI resolving a relative time and us checking
+// it against the wall clock).
+const gracePeriod = 15 * time.Second
+
 func futureOrRecurring(fireAtISO, recurrence string, now time.Time) bool {
 	fireAt, err := time.Parse(time.RFC3339, strings.TrimSpace(fireAtISO))
 	if err != nil {
 		return false
 	}
-	return recurrence != "" || fireAt.After(now)
+	return recurrence != "" || fireAt.Add(gracePeriod).After(now)
 }
 
 // parseWhen runs one AI call to turn natural-language timing into an absolute
@@ -202,6 +228,18 @@ func (s *AlertsService) Snooze(id int64, minutes int) error {
 		return fmt.Errorf("no_db")
 	}
 	return s.db.UpdateAlertFireAt(id, time.Now().Add(time.Duration(minutes)*time.Minute))
+}
+
+// GetAlertNoteID returns the note_id of an alert, or nil if unlinked.
+func (s *AlertsService) GetAlertNoteID(id int64) (*int64, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("no_db")
+	}
+	a, err := s.db.GetAlert(id)
+	if err != nil {
+		return nil, err
+	}
+	return a.NoteID, nil
 }
 
 // Done marks an alert done. For a one-shot it's the natural close (idempotent if
@@ -322,7 +360,7 @@ Resolva datas/horas relativas ("amanhã", "sexta", "às 9h") em relação a ESTE
 Responda APENAS com JSON, sem cercas:
 {"message":"<texto curto do lembrete>","fire_at":"<ISO 8601 com offset, ex 2026-06-26T09:00:00%+03d:00>","recurrence":<null ou {"freq":"daily|weekly|monthly|yearly","interval":1,"weekday":"mon","time":"09:00"}>}
 "recurrence" é null para lembrete único; "weekday" só em "weekly". Nunca invente; se faltar horário, assuma 09:00 local.`,
-		now.Format("2006-01-02 15:04 (Monday)"), zoneName, offsetH, language, noteLine, offsetH)
+		now.Format("2006-01-02 15:04:05 (Monday)"), zoneName, offsetH, language, noteLine, offsetH)
 	return []ai.Message{
 		{Role: "system", Content: system},
 		{Role: "user", Content: text},

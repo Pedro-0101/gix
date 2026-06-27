@@ -28,3 +28,10 @@ export const onAlertFired = (cb: (a: AlertFiredPayload) => void) =>
 // Fired when the user clicks a toast body — open the alerts view focused on it.
 export const onAlertOpen = (cb: (id: number) => void) =>
   Events.On('alert:open', (e) => cb((e.data as { id: number }).id))
+
+export type AlertProposedPayload = { message: string; fireAt: string; recurrence: string }
+
+// Fired by Go when the chat model proposes an alert (create_alert tool call) —
+// the shell asks the user to confirm before scheduling it.
+export const onAlertProposed = (cb: (p: AlertProposedPayload) => void) =>
+  Events.On('alert:proposed', (e) => cb(e.data as AlertProposedPayload))

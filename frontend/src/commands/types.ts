@@ -12,6 +12,7 @@ export interface CaptureResult {
   noteTitle: string
   tags: string[]
   message: string
+  alert?: { message: string; fireAt: string; recurrence: string }
 }
 
 // Outcome of creating an alert (Go app.CreateAlertResult).
@@ -99,6 +100,7 @@ export interface CommandContext {
   // calls the AI to parse the date/recurrence).
   alerts: {
     create(text: string): Promise<CreateAlertResult>
+    createProposed(p: { message: string; fireAt: string; recurrence: string; noteId?: number }): Promise<CreateAlertResult>
   }
 }
 

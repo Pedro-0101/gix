@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"gix/internal/ai"
 	"gix/internal/config"
@@ -13,7 +16,7 @@ import (
 type Emitter func(name string, data any)
 
 type Streamer interface {
-	Stream(ctx context.Context, model string, msgs []ai.Message, onDelta func(string)) (*ai.Usage, error)
+	StreamTools(ctx context.Context, model string, msgs []ai.Message, tools []ai.Tool, onDelta func(string)) (*ai.Usage, []ai.ToolCall, error)
 }
 
 type UsagePayload struct {
@@ -23,6 +26,56 @@ type UsagePayload struct {
 
 type DonePayload struct {
 	Content string `json:"content"`
+}
+
+// createAlertTool deixa o modelo do chat agendar um lembrete em vez de só
+// responder em prosa. O app intercepta a chamada e pede confirmação ao usuário.
+var createAlertTool = ai.Tool{
+	Type: "function",
+	Function: ai.ToolFunction{
+		Name:        "create_alert",
+		Description: "Agenda um lembrete/alarme quando o usuário pede para ser lembrado de algo num horário ou data. Resolva datas relativas a partir do horário local atual informado no system prompt.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"message":{"type":"string"},"fire_at":{"type":"string","description":"ISO 8601 com offset"},"recurrence":{"type":["object","null"]}},"required":["message","fire_at"]}`),
+	},
+}
+
+type alertProposedPayload struct {
+	Message    string `json:"message"`
+	FireAt     string `json:"fireAt"`
+	Recurrence string `json:"recurrence"`
+}
+
+// chatToolSystem injeta o horário local atual para o modelo resolver datas
+// relativas ao chamar create_alert.
+func chatToolSystem(now time.Time, language string) ai.Message {
+	zoneName, offsetSec := now.Zone()
+	return ai.Message{Role: "system", Content: fmt.Sprintf(
+		`Data e hora locais atuais: %s. Fuso: %s (UTC%+d). Idioma: %s. Se o usuário pedir um lembrete/alarme com horário ou data, chame a ferramenta create_alert (resolvendo datas relativas a ESTE momento) em vez de só responder.`,
+		now.Format("2006-01-02 15:04 (Monday)"), zoneName, offsetSec/3600, language)}
+}
+
+func findToolCall(calls []ai.ToolCall, name string) (ai.ToolCall, bool) {
+	for _, c := range calls {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return ai.ToolCall{}, false
+}
+
+func parseAlertCall(c ai.ToolCall) (alertProposedPayload, error) {
+	var dec alertDecision
+	if err := json.Unmarshal([]byte(c.Arguments), &dec); err != nil {
+		return alertProposedPayload{}, err
+	}
+	if strings.TrimSpace(dec.FireAt) == "" {
+		return alertProposedPayload{}, fmt.Errorf("empty fire_at")
+	}
+	return alertProposedPayload{
+		Message:    strings.TrimSpace(dec.Message),
+		FireAt:     strings.TrimSpace(dec.FireAt),
+		Recurrence: marshalRecurrence(dec.Recurrence),
+	}, nil
 }
 
 type ChatService struct {
@@ -90,10 +143,11 @@ func (s *ChatService) Send(text string) {
 	}
 	cid := s.convID
 	s.history = append(s.history, ai.Message{Role: "user", Content: text})
-	msgs := make([]ai.Message, 0, len(s.history)+1)
+	msgs := make([]ai.Message, 0, len(s.history)+2)
 	if strings.TrimSpace(cfg.SystemPrompt) != "" {
 		msgs = append(msgs, ai.Message{Role: "system", Content: cfg.SystemPrompt})
 	}
+	msgs = append(msgs, chatToolSystem(time.Now(), cfg.Language))
 	msgs = append(msgs, s.history...)
 	gen := s.gen
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,7 +161,7 @@ func (s *ChatService) Send(text string) {
 	go func() {
 		client := s.newClient(apiKey)
 		var sb strings.Builder
-		usage, streamErr := client.Stream(ctx, cfg.Model, msgs, func(delta string) {
+		usage, toolCalls, streamErr := client.StreamTools(ctx, cfg.Model, msgs, []ai.Tool{createAlertTool}, func(delta string) {
 			sb.WriteString(delta)
 			s.emit("chat:delta", delta)
 		})
@@ -135,6 +189,18 @@ func (s *ChatService) Send(text string) {
 		case streamErr != nil:
 			s.emit("chat:error", streamErr.Error())
 		default:
+			if call, ok := findToolCall(toolCalls, "create_alert"); ok {
+				if p, perr := parseAlertCall(call); perr == nil {
+					s.emit("alert:proposed", p)
+					if full != "" {
+						s.persist(cid, gen, full)
+						s.emit("chat:done", DonePayload{Content: full})
+					} else {
+						s.persist(cid, gen, "(propôs um alerta)")
+					}
+					return
+				}
+			}
 			if full == "" {
 				full = "(sem resposta)"
 			}

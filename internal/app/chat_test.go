@@ -12,15 +12,16 @@ import (
 )
 
 type fakeStreamer struct {
-	deltas []string
-	usage  *ai.Usage
+	deltas    []string
+	usage     *ai.Usage
+	toolCalls []ai.ToolCall
 }
 
-func (f *fakeStreamer) Stream(ctx context.Context, model string, msgs []ai.Message, onDelta func(string)) (*ai.Usage, error) {
+func (f *fakeStreamer) StreamTools(ctx context.Context, model string, msgs []ai.Message, tools []ai.Tool, onDelta func(string)) (*ai.Usage, []ai.ToolCall, error) {
 	for _, d := range f.deltas {
 		onDelta(d)
 	}
-	return f.usage, nil
+	return f.usage, f.toolCalls, nil
 }
 
 func TestChatServiceSendEmitsSequence(t *testing.T) {
@@ -91,10 +92,10 @@ type blockingStreamer struct {
 	release chan struct{}
 }
 
-func (b *blockingStreamer) Stream(ctx context.Context, model string, msgs []ai.Message, onDelta func(string)) (*ai.Usage, error) {
+func (b *blockingStreamer) StreamTools(ctx context.Context, model string, msgs []ai.Message, tools []ai.Tool, onDelta func(string)) (*ai.Usage, []ai.ToolCall, error) {
 	close(b.entered)
 	<-b.release
-	return &ai.Usage{}, nil
+	return &ai.Usage{}, nil, nil
 }
 
 func TestChatServiceSecondSendWhileStreamingIsNoop(t *testing.T) {
@@ -141,5 +142,63 @@ func TestChatServiceSecondSendWhileStreamingIsNoop(t *testing.T) {
 		if m.Content == "segunda" {
 			t.Fatal("a segunda mensagem nao deveria ter sido persistida")
 		}
+	}
+}
+
+func TestChatServiceEmitsAlertProposedOnToolCall(t *testing.T) {
+	t.Setenv("AppData", t.TempDir())
+	d, err := db.Open(filepath.Join(t.TempDir(), "c3.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+
+	var mu sync.Mutex
+	events := map[string]int{}
+	var proposed any
+	emit := func(name string, data any) {
+		mu.Lock()
+		defer mu.Unlock()
+		events[name]++
+		if name == "alert:proposed" {
+			proposed = data
+		}
+	}
+
+	cfgSvc := NewConfigService()
+	cur := cfgSvc.Current()
+	cur.APIKey = "k"
+	_ = cfgSvc.Save(*cur)
+
+	fake := &fakeStreamer{
+		usage:     &ai.Usage{TotalTokens: 3},
+		toolCalls: []ai.ToolCall{{Name: "create_alert", Arguments: `{"message":"remédio","fire_at":"2099-01-01T09:00:00-03:00","recurrence":null}`}},
+	}
+	s := NewChatService(cfgSvc, d, emit, func(string) Streamer { return fake })
+
+	s.Send("me lembra do remédio amanhã 9h")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := events["alert:proposed"]
+		mu.Unlock()
+		if got > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if events["alert:proposed"] != 1 {
+		t.Fatalf("esperava 1 alert:proposed, veio %d", events["alert:proposed"])
+	}
+	if events["chat:done"] != 0 {
+		t.Fatalf("tool call sem texto não deveria emitir chat:done, veio %d", events["chat:done"])
+	}
+	p, ok := proposed.(alertProposedPayload)
+	if !ok || p.Message != "remédio" || p.FireAt != "2099-01-01T09:00:00-03:00" {
+		t.Fatalf("payload inesperado: %+v", proposed)
 	}
 }

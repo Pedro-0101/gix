@@ -85,6 +85,9 @@ const pt: Record<string, string> = {
   alert_recurrence_monthly: 'mensalmente',
   alert_recurrence_yearly: 'anualmente',
   alert_recurrence_every: 'a cada',
+  alert_confirm: 'Criar alerta para',
+  alert_yes: 'Sim',
+  alert_no: 'Não',
 }
 
 const en: Record<string, string> = {
@@ -174,6 +177,9 @@ const en: Record<string, string> = {
   alert_recurrence_monthly: 'monthly',
   alert_recurrence_yearly: 'yearly',
   alert_recurrence_every: 'every',
+  alert_confirm: 'Create an alert for',
+  alert_yes: 'Yes',
+  alert_no: 'No',
 }
 
 export function tr(lang: string, key: string): string {

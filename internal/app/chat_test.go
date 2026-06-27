@@ -321,3 +321,64 @@ func TestChatServiceMalformedToolCallFallsThroughToDone(t *testing.T) {
 		t.Fatalf("esperava 1 chat:done no fallback, veio %d", events["chat:done"])
 	}
 }
+
+func TestChatServiceDropsUnschedulableToolCall(t *testing.T) {
+	cases := []struct {
+		name string
+		args string
+	}{
+		{"past fire_at", `{"message":"remédio","fire_at":"2000-01-01T09:00:00-03:00","recurrence":null}`},
+		{"empty message", `{"message":"","fire_at":"2099-01-01T09:00:00-03:00","recurrence":null}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AppData", t.TempDir())
+			d, err := db.Open(filepath.Join(t.TempDir(), "c6.db"))
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			defer d.Close()
+
+			var mu sync.Mutex
+			events := map[string]int{}
+			emit := func(name string, data any) {
+				mu.Lock()
+				defer mu.Unlock()
+				events[name]++
+			}
+
+			cfgSvc := NewConfigService()
+			cur := cfgSvc.Current()
+			cur.APIKey = "k"
+			_ = cfgSvc.Save(*cur)
+
+			fake := &fakeStreamer{
+				usage:     &ai.Usage{TotalTokens: 3},
+				toolCalls: []ai.ToolCall{{Name: "create_alert", Arguments: tc.args}},
+			}
+			s := NewChatService(cfgSvc, d, emit, func(string) Streamer { return fake })
+
+			s.Send("me lembra de algo")
+
+			deadline := time.Now().Add(2 * time.Second)
+			for time.Now().Before(deadline) {
+				mu.Lock()
+				got := events["chat:done"]
+				mu.Unlock()
+				if got > 0 {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			if events["alert:proposed"] != 0 {
+				t.Fatalf("proposta não-agendável não deveria emitir alert:proposed, veio %d", events["alert:proposed"])
+			}
+			if events["chat:done"] != 1 {
+				t.Fatalf("esperava 1 chat:done de feedback, veio %d", events["chat:done"])
+			}
+		})
+	}
+}

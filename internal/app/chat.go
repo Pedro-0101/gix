@@ -191,13 +191,23 @@ func (s *ChatService) Send(text string) {
 		default:
 			if call, ok := findToolCall(toolCalls, "create_alert"); ok {
 				if p, perr := parseAlertCall(call); perr == nil {
-					s.emit("alert:proposed", p)
-					if full != "" {
-						s.persist(cid, gen, full)
-						s.emit("chat:done", DonePayload{Content: full})
-					} else {
-						s.persist(cid, gen, "(propôs um alerta)")
+					if p.Message != "" && futureOrRecurring(p.FireAt, p.Recurrence, time.Now()) {
+						s.emit("alert:proposed", p)
+						if full != "" {
+							s.persist(cid, gen, full)
+							s.emit("chat:done", DonePayload{Content: full})
+						} else {
+							s.persist(cid, gen, "(propôs um alerta)")
+						}
+						return
 					}
+					// Tool call that can't be scheduled (past time / empty message):
+					// give the user feedback instead of a dead-end chip.
+					if full == "" {
+						full = "Não consegui agendar esse lembrete."
+					}
+					s.persist(cid, gen, full)
+					s.emit("chat:done", DonePayload{Content: full})
 					return
 				}
 			}

@@ -391,6 +391,25 @@ func TestCaptureNoAlertWhenNotTimeBound(t *testing.T) {
 	}
 }
 
+func TestCaptureNoAlertWhenPast(t *testing.T) {
+	d := notesTestDB(t)
+	fake := &fakeCompleter{responses: []string{
+		`{"title":"Médico","content":"consulta","tags":["saude"],"alert":{"message":"ligar pro médico","fire_at":"2000-01-01T09:00:00-03:00","recurrence":null}}`,
+	}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Capture("ligar pro médico ontem 9h")
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	if res.Status != "created" {
+		t.Fatalf("nota deveria ser criada, veio %+v", res)
+	}
+	if res.Alert != nil {
+		t.Fatalf("alerta no passado não deveria ser proposto, veio %+v", res.Alert)
+	}
+}
+
 func TestSnippetSingleLineAndTruncates(t *testing.T) {
 	if s := snippet("uma\nnota\ncurta"); s != "uma nota curta" {
 		t.Fatalf("snippet flatten failed: %q", s)

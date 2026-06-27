@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Browser } from '@wailsio/runtime'
 import type { Components } from 'react-markdown'
 
 // Renderizador de Markdown para a leitura de notas. Ao contrário do MessageCard
@@ -26,7 +27,8 @@ const components: Components = {
       />
     ) : null,
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+    <a href={href} onClick={(e) => { e.preventDefault(); if (href) Browser.OpenURL(href) }}
+      className="text-accent underline underline-offset-2">
       {children}
     </a>
   ),

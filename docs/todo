@@ -16,6 +16,7 @@ notas (core business) - v1 do /note feita; futuro:
 - Fazer um visualizador de arvode, estilo obsidian
 
 feito
+- Links em markdown abrem no navegador (Browser.OpenURL via Wails runtime)
 - Sistema de notas v1: /note <texto> com roteamento semântico por IA (anexar/criar), limite de linhas com escolha de overflow (resumir/parte 2/dividir por tema), data relativa resolvida para absoluta no texto
 - Tela de notas: lista + leitura mestre-detalhe das anotações
 - Busca híbrida (/find, FTS5 + embeddings) e Q&A sobre as notas (/ask, IA resume)

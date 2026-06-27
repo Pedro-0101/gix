@@ -93,7 +93,7 @@ export function GraphView({
       const simNodes: SimNode[] = gd.nodes.map((n) => ({
         id: n.id,
         title: n.title,
-        tags: n.tags,
+        tags: n.tags ?? [],
         radius: 5 + Math.min((edgeCount.get(n.id) || 0) * 1.5, 6),
         linkCount: edgeCount.get(n.id) || 0,
       }))

@@ -47,7 +47,7 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
 
   const snooze = async (a: Alert) => { await AlertsService.Snooze(a.ID, 10); load() }
   const complete = async (a: Alert) => { await AlertsService.Done(a.ID); load() }
-  const remove = async (a: Alert) => { await AlertsService.Delete(a.ID); load() }
+  const remove = async (a: Alert) => { await AlertsService.Cancel(a.ID); load() }
 
   const meta = (a: Alert) => [formatFireAt(a.FireAt, lang), recurrenceLabel(lang, a.Recurrence)].filter(Boolean).join(' · ')
 
@@ -85,7 +85,7 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
                     className="min-w-0 flex-1 cursor-pointer text-left outline-none"
                   >
                     <div className="truncate text-sm">
-                      {a.NoteID ? '📝 ' : ''}{a.Message}
+                      {a.Message}
                     </div>
                     <div className="truncate text-xs text-muted">{meta(a)}</div>
                   </button>
@@ -106,7 +106,7 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
               onClick={() => setShowDone((v) => !v)}
               className="cursor-pointer px-1 py-1 text-xs text-muted outline-none hover:text-fg"
             >
-              {showDone ? '▾' : '▸'} {tr(lang, 'alerts_done_section')} ({done.length})
+              {showDone ? '[-]' : '[+]'} {tr(lang, 'alerts_done_section')} ({done.length})
             </button>
             {showDone && (
               <div className="space-y-0.5 opacity-60">

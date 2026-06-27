@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
 import ReactMarkdown from 'react-markdown'
+import { Browser } from '@wailsio/runtime'
 import { softenMarkdown } from '../lib/softenMarkdown'
 
 export function MessageCard({ role, content, label, pending, revealing }:
@@ -43,7 +44,18 @@ export function MessageCard({ role, content, label, pending, revealing }:
             </span>
           </span>
         ) : (
-          <ReactMarkdown>{revealing ? softenMarkdown(content) : content}</ReactMarkdown>
+          <ReactMarkdown
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} onClick={(e) => { e.preventDefault(); if (href) Browser.OpenURL(href) }}
+                  className="underline underline-offset-2">
+                  {children}
+                </a>
+              ),
+            }}
+          >
+            {revealing ? softenMarkdown(content) : content}
+          </ReactMarkdown>
         )}
       </div>
     </motion.div>

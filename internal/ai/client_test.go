@@ -148,3 +148,42 @@ func TestStreamCancelledMidStream(t *testing.T) {
 		t.Fatal("esperava erro de cancelamento mid-stream")
 	}
 }
+
+func TestStreamToolsAccumulatesToolCallDeltas(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"create_alert","arguments":"{\"message\":\"x\","}}]}}]}`,
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"fire_at\":\"2099-01-01T09:00:00-03:00\"}"}}]}}]}`,
+		`data: {"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`,
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sse))
+	}))
+	defer srv.Close()
+
+	c := New("k")
+	c.baseURL = srv.URL
+
+	var text strings.Builder
+	usage, calls, err := c.StreamTools(context.Background(), "m",
+		[]Message{{Role: "user", Content: "oi"}}, []Tool{{Type: "function"}},
+		func(s string) { text.WriteString(s) })
+	if err != nil {
+		t.Fatalf("StreamTools: %v", err)
+	}
+	if text.String() != "" {
+		t.Fatalf("não deveria haver texto, veio %q", text.String())
+	}
+	if len(calls) != 1 || calls[0].Name != "create_alert" {
+		t.Fatalf("esperava 1 tool call create_alert, veio %+v", calls)
+	}
+	if calls[0].Arguments != `{"message":"x","fire_at":"2099-01-01T09:00:00-03:00"}` {
+		t.Fatalf("arguments concatenados errados: %q", calls[0].Arguments)
+	}
+	if usage == nil || usage.TotalTokens != 3 {
+		t.Fatalf("usage = %+v", usage)
+	}
+}

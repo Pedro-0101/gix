@@ -160,14 +160,17 @@ func Run(assets fs.FS, trayIcon []byte) error {
 	})
 
 	// Show the palette pinned to the top-centre of the monitor where the mouse
-	// cursor currently sits. The frontend manages the height via useWindowFit
-	// (animated), so we keep the previous size instead of resetting to
-	// collapsedHeight — avoids the 64px→real flash on re-open.
+	// cursor currently sits. Reset to the collapsed height first so the window
+	// always re-opens as the bare input bar and grows downward as content
+	// streams in (the frontend animates the height via useWindowFit). Without
+	// this the OS keeps the previous session's height, so re-opening to a clean
+	// bar would flash the old, taller window and visibly shrink.
 	showMain := func() {
 		s := cursorScreen(wailsApp.Screen.GetAll())
 		if s == nil {
 			s, _ = mainWin.GetScreen()
 		}
+		mainWin.SetSize(paletteWidth, collapsedHeight)
 		if s != nil {
 			wa := s.WorkArea
 			mainWin.SetPosition(wa.X+(wa.Width-paletteWidth)/2, wa.Y+topOffset)

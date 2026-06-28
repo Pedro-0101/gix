@@ -34,8 +34,9 @@ feito
 - Resumir nota com IA (/resumir + botão na tela de notas): substitui o conteúdo com desfazer
 - Lembretes de verdade: alertas com due_at estruturado, recorrência, notificações nativas (snooze/concluir) e scheduler com polling
 - Visualizador de árvore estilo obsidian (/graph, constelação por tags compartilhadas)
+- Suavizar expansão vertical da janela (passos secos/abruptos) — easeOutQuart + filtro de velocidade
+- Corrigir janela abrindo num tamanho e depois diminuindo (pisca feio) — Go reseta p/ altura colapsada antes do Show e o useWindowFit reancorra a baseline a cada abertura
 
 
 fixes
-- Corrigir janela abrindo num tamanho e depois diminuindo (pisca feio)
-- Suavizar expansão vertical da janela (está em passos muito secos/abruptos)
+- (vazio)

@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useRef, type RefObject } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react"
 import { Window } from "@wailsio/runtime"
 
 // Must match the Go side (internal/app/shell.go).
 const WIDTH = 680
+
+// Collapsed window height — must match collapsedHeight in internal/app/shell.go.
+// On every show the OS window is reset to this height (Go side), so the
+// animation baseline has to start here too; otherwise the first fit would
+// animate down from the previous session's (taller) height and the window would
+// briefly open large and then shrink.
+const COLLAPSED = 64
 
 // How long the animated window-resize transition lasts (ms). Longer than a
 // snappy UI tap on purpose: the window grows downward as content streams in,
@@ -56,6 +63,16 @@ export function useWindowFit(rootRef: RefObject<HTMLDivElement | null>, nonce: n
 
     rafRef.current = requestAnimationFrame(step)
   }, [rootRef])
+
+  // On each show (nonce bump) the window re-opens collapsed (Go resets the OS
+  // size before Show). Snap the baseline back to the collapsed height so the
+  // next fit grows downward from the bar instead of shrinking from the previous
+  // session's height. Runs before the caller's fit layout effect, since this
+  // hook is invoked earlier in App's render.
+  useLayoutEffect(() => {
+    cancelAnimationFrame(rafRef.current)
+    curRef.current = COLLAPSED
+  }, [nonce])
 
   useEffect(() => {
     const el = rootRef.current

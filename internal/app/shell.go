@@ -159,11 +159,11 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		},
 	})
 
-	// Show the palette collapsed and pinned to the top-centre of the monitor
-	// where the mouse cursor currently sits (instead of always opening on
-	// monitor 1), then let the frontend reset/focus via the window:shown event.
+	// Show the palette pinned to the top-centre of the monitor where the mouse
+	// cursor currently sits. The frontend manages the height via useWindowFit
+	// (animated), so we keep the previous size instead of resetting to
+	// collapsedHeight — avoids the 64px→real flash on re-open.
 	showMain := func() {
-		mainWin.SetSize(paletteWidth, collapsedHeight)
 		s := cursorScreen(wailsApp.Screen.GetAll())
 		if s == nil {
 			s, _ = mainWin.GetScreen()

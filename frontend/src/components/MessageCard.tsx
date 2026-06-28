@@ -11,7 +11,7 @@ export function MessageCard({ role, content, label, pending, revealing }:
     <motion.div
       initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      transition={{ type: 'spring', duration: 0.35, bounce: 0 }}
+      transition={{ type: 'spring', duration: 0.5, bounce: 0 }}
       className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
     >
       <span

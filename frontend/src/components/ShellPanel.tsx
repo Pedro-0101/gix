@@ -53,7 +53,7 @@ export function ShellPanel(p: Props) {
     <motion.div
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+      transition={{ type: "spring", duration: 0.45, bounce: 0 }}
       className={`min-h-0 border-t border-[color:var(--shell-border)] selectable ${full ? "overflow-hidden" : "overflow-y-auto"}`}
       style={full ? { height: p.panelMax } : { maxHeight: p.panelMax }}
     >

@@ -211,7 +211,10 @@ export default function App() {
       ref={rootRef}
       initial="hidden"
       animate="show"
-      variants={{ show: { transition: { staggerChildren: 0.07 } } }}
+      variants={{
+        hidden: { opacity: 0 },
+        show: { opacity: 1, transition: { staggerChildren: 0.07 } },
+      }}
       className="flex flex-col overflow-hidden rounded-xl text-fg"
       style={{
         maxHeight: maxH,

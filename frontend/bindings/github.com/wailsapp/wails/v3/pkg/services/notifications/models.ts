@@ -40,3 +40,30 @@ export interface NotificationOptions {
     "categoryId"?: string;
     "data"?: { [_ in string]?: any } | null;
 }
+
+/**
+ * NotificationResponse represents the response sent by interacting with a notification.
+ */
+export interface NotificationResponse {
+    "id"?: string;
+    "actionIdentifier"?: string;
+    "categoryIdentifier"?: string;
+    "title"?: string;
+
+    /**
+     * (macOS and Linux only)
+     */
+    "subtitle"?: string;
+    "body"?: string;
+    "userText"?: string;
+    "userInfo"?: { [_ in string]?: any } | null;
+}
+
+/**
+ * NotificationResult represents the result of a notification response,
+ * returning the response or any errors that occurred.
+ */
+export interface NotificationResult {
+    "Response": NotificationResponse;
+    "Error": any;
+}

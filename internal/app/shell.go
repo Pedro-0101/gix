@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -153,7 +152,7 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		// background). Acrylic is the reliable native translucency path on Windows;
 		// BackgroundTypeTransparent renders opaque white on this WebView2/Wails build.
 		BackgroundType: application.BackgroundTypeTranslucent,
-		URL:         "/",
+		URL:            "/",
 		Windows: application.WindowsWindow{
 			BackdropType: application.Acrylic,
 		},
@@ -184,26 +183,11 @@ func Run(assets fs.FS, trayIcon []byte) error {
 
 	showMainFn = showMain
 
-	// Toast action buttons + click handling.
+	// Toast action buttons + click handling. The buttons and their handlers live
+	// together in the alerts service (alerts_actions.go); shell.go only wires the
+	// service's dispatcher to the notifier.
 	alertsSvc.RegisterCategory()
-	notifSvc.OnNotificationResponse(func(result notifications.NotificationResult) {
-		if result.Error != nil {
-			return
-		}
-		resp := result.Response
-		var id int64
-		fmt.Sscanf(resp.ID, "%d", &id)
-		switch resp.ActionIdentifier {
-		case "snooze":
-			_ = alertsSvc.Snooze(id, 10)
-		case "done":
-			_ = alertsSvc.Done(id)
-		default: // DEFAULT_ACTION: user clicked the toast body
-			showMain()
-			noteID, _ := alertsSvc.GetAlertNoteID(id)
-			emit("alert:open", map[string]any{"id": id, "noteId": noteID})
-		}
-	})
+	notifSvc.OnNotificationResponse(alertsSvc.HandleNotificationResponse)
 
 	// Scheduler goroutine; cancelled on app shutdown.
 	alertCtx, cancelAlerts := context.WithCancel(context.Background())

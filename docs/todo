@@ -18,10 +18,10 @@ notas (core business) - v1 do /note feita; futuro:
 
 arquitetura (design patterns p/ expansão)
 - [x] Tool registry no chat: ferramentas como interface (ChatTool: Schema + Handle), Send despacha por toolRegistry.dispatch/schemas em vez de if-por-tool (chat_tools.go). create_alert e create_note já rodam sobre ele; falta só registrar search_notes/web_search como novas ChatTool quando virarem feature
-- [ ] Provider de IA pluggável de verdade: registry por provider/modelo (Anthropic direto, OpenAI direto, Ollama local) — o seam já está centralizado em provider.go (newProvider); falta o registro por config/modelo quando surgir o 2º provider
-- [ ] Recorrência via Strategy (mapa freq→advanceFunc) quando adicionar frequências novas (a cada N horas, dias úteis, "última sexta do mês") — recurrence.go (hoje switch com 4 casos estáveis, ainda honesto)
+- [ ] Provider de IA pluggável de verdade: registry por provider/modelo (Anthropic direto, OpenAI direto, Ollama local) — o seam já está centralizado em provider.go (newProvider); falta o registro por config/modelo quando surgir o 2º provider (verificado 2026-06-28: ainda 1 provider só, gatilho não disparou — deixar como está)
+- [ ] Recorrência via Strategy (mapa freq→advanceFunc) quando adicionar frequências novas (a cada N horas, dias úteis, "última sexta do mês") — recurrence.go (hoje switch com 4 casos estáveis, ainda honesto; verificado 2026-06-28: sem frequências novas, deixar como está)
 - [x] Busca: RankSource pluggável (interface Rank(query)) — Find funde rankSources() via RRF; FTS e vetor são as fontes embutidas, somar recência/boost de tag/rerank é só acrescentar uma fonte na slice (notes_search.go)
-- [ ] Registry de ações de notificação (actionID→handler) quando passar de ~3 ações, mantendo o botão (RegisterCategory) e o handler juntos — shell.go / alerts_scheduler.go
+- [x] Registry de ações de notificação: alertActions ({id,título,handle}) é fonte única — RegisterCategory monta os botões dele e HandleNotificationResponse despacha por id (default=abrir overlay). Tirou o switch do shell.go e a lista de botões do scheduler; nova ação = 1 entrada (alerts_actions.go)
 - [x] Builder de prompt: cabeçalho de data/fuso/idioma centralizado (localTimeHeader em prompt.go) — removeu a duplicação de capture/alert/chat
 - [x] Provider de IA: construção centralizada em newProvider (provider.go), um único ponto em vez de ai.New repetido em 3 serviços
 

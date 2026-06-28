@@ -9,5 +9,7 @@ export {
 export type {
     NotificationAction,
     NotificationCategory,
-    NotificationOptions
+    NotificationOptions,
+    NotificationResponse,
+    NotificationResult
 } from "./models.js";

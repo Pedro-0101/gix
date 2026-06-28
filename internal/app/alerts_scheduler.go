@@ -81,20 +81,6 @@ func (s *AlertsService) dispatch(a db.Alert) {
 	}
 }
 
-// RegisterCategory registers the toast action buttons. Called once at boot.
-func (s *AlertsService) RegisterCategory() {
-	if s.notifier == nil {
-		return
-	}
-	_ = s.notifier.RegisterNotificationCategory(notifications.NotificationCategory{
-		ID: alertCategoryID,
-		Actions: []notifications.NotificationAction{
-			{ID: "snooze", Title: "Adiar 10 min"},
-			{ID: "done", Title: "Concluir"},
-		},
-	})
-}
-
 // alertFiredPayload is the alert:fired event body the frontend consumes.
 type alertFiredPayload struct {
 	ID      int64  `json:"id"`

@@ -14,6 +14,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as notifications$0 from "../../../github.com/wailsapp/wails/v3/pkg/services/notifications/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as db$0 from "../db/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -68,6 +71,16 @@ export function GetAlertNoteID(id: number): $CancellablePromise<number | null> {
 }
 
 /**
+ * HandleNotificationResponse routes a toast interaction to its handler: a button
+ * tap runs the matching registry entry; a toast-body click (the default action,
+ * which has no button) opens the overlay on the alert's note. Wired to the
+ * notifier in shell.go.
+ */
+export function HandleNotificationResponse(result: notifications$0.NotificationResult): $CancellablePromise<void> {
+    return $Call.ByID(1156575759, result);
+}
+
+/**
  * List returns alerts the manager shows: pending and done, fire_at ascending.
  */
 export function List(): $CancellablePromise<db$0.Alert[] | null> {
@@ -75,7 +88,8 @@ export function List(): $CancellablePromise<db$0.Alert[] | null> {
 }
 
 /**
- * RegisterCategory registers the toast action buttons. Called once at boot.
+ * RegisterCategory installs the toast action buttons from the registry. Called
+ * once at boot.
  */
 export function RegisterCategory(): $CancellablePromise<void> {
     return $Call.ByID(3793523940);

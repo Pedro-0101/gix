@@ -191,6 +191,73 @@ func TestFutureOrRecurring(t *testing.T) {
 	}
 }
 
+func TestRegisterCategoryInstallsActionButtons(t *testing.T) {
+	d := alertsTestDB(t)
+	fn := &fakeNotifier{}
+	svc := NewAlertsService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} }, func(string, any) {}, nil, fn)
+
+	svc.RegisterCategory()
+
+	if len(fn.categories) != 1 {
+		t.Fatalf("expected one category registered, got %d", len(fn.categories))
+	}
+	got := fn.categories[0].Actions
+	if len(got) != len(alertActions) {
+		t.Fatalf("category should expose every registry action, got %d want %d", len(got), len(alertActions))
+	}
+	for i, a := range alertActions {
+		if got[i].ID != a.id || got[i].Title != a.title {
+			t.Fatalf("button %d = %+v, want id=%q title=%q", i, got[i], a.id, a.title)
+		}
+	}
+}
+
+func TestHandleNotificationResponseRoutesActions(t *testing.T) {
+	d := alertsTestDB(t)
+	now := time.Now().UTC()
+	id, _ := d.CreateAlert(db.Alert{Message: "x", FireAt: now.Add(time.Hour)})
+
+	shown := 0
+	var opened []any
+	svc := NewAlertsService(NewConfigService(), d, func(string) Completer { return &fakeCompleter{} },
+		func(name string, data any) {
+			if name == "alert:open" {
+				opened = append(opened, data)
+			}
+		}, func() { shown++ }, nil)
+	svc.loc = time.UTC
+
+	resp := func(action string) notifications.NotificationResult {
+		return notifications.NotificationResult{
+			Response: notifications.NotificationResponse{ID: fmt.Sprintf("%d", id), ActionIdentifier: action},
+		}
+	}
+
+	// snooze: pushes fire_at forward, alert stays pending, no overlay.
+	svc.HandleNotificationResponse(resp("snooze"))
+	if a, _ := d.GetAlert(id); a.Status != "pending" || !a.FireAt.After(now.Add(9*time.Minute)) {
+		t.Fatalf("snooze action should reschedule and keep pending, got %+v", a)
+	}
+
+	// done: marks the one-shot done.
+	svc.HandleNotificationResponse(resp("done"))
+	if a, _ := d.GetAlert(id); a.Status != "done" {
+		t.Fatalf("done action should mark done, got %q", a.Status)
+	}
+
+	// default (toast body, empty action id): opens the overlay on the note.
+	svc.HandleNotificationResponse(resp(""))
+	if shown != 1 || len(opened) != 1 {
+		t.Fatalf("default action should open overlay once, shown=%d opened=%d", shown, len(opened))
+	}
+
+	// an error result is ignored.
+	svc.HandleNotificationResponse(notifications.NotificationResult{Error: fmt.Errorf("boom")})
+	if shown != 1 {
+		t.Fatalf("error result must be a no-op, shown=%d", shown)
+	}
+}
+
 func alertsTestDB(t *testing.T) *db.Database {
 	t.Helper()
 	d, err := db.Open(t.TempDir() + "/notes.db")

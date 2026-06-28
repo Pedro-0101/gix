@@ -119,8 +119,7 @@ func parseCaptureJSON(s string) (captureDecision, error) {
 }
 
 func buildCapturePrompt(text string, now time.Time) []ai.Message {
-	zoneName, offsetSec := now.Zone()
-	offsetH := offsetSec / 3600
+	stamp, zoneName, offsetH := localTimeHeader(now)
 	system := fmt.Sprintf(`Você organiza anotações rápidas do usuário em uma nota atômica e bem formatada.
 A data e hora atuais são: %s. Fuso: %s (UTC%+d).
 Resolva qualquer data relativa ("amanhã", "sexta") para uma data absoluta no texto.
@@ -129,7 +128,7 @@ Gere um "title" curto (sem marcadores Markdown) e de 1 a 5 "tags" temáticas, mi
 Se o usuário pedir explicitamente para criar um alerta ou lembrete, extraia essa instrução para o campo "alert" — o conteúdo da nota deve conter apenas o restante do texto. Se não houver instrução explícita mas a nota descrever um lembrete com horário/data concretos, também inclua "alert". Caso contrário use "alert": null.
 Responda APENAS com JSON, sem cercas:
 {"title":"<título curto>","content":"<Markdown da nota>","tags":["tag1","tag2"],"alert":null ou {"message":"<lembrete curto>","fire_at":"<ISO 8601 com offset>","recurrence":null ou {"freq":"daily|weekly|monthly|yearly","interval":1,"weekday":"mon","time":"09:00"}}}`,
-		now.Format("2006-01-02 15:04:05 (Monday)"), zoneName, offsetH)
+		stamp, zoneName, offsetH)
 	return []ai.Message{
 		{Role: "system", Content: system},
 		{Role: "user", Content: text},

@@ -48,10 +48,10 @@ type alertProposedPayload struct {
 // chatToolSystem injeta o horário local atual para o modelo resolver datas
 // relativas ao chamar create_alert.
 func chatToolSystem(now time.Time, language string) ai.Message {
-	zoneName, offsetSec := now.Zone()
+	stamp, zoneName, offsetH := localTimeHeader(now)
 	return ai.Message{Role: "system", Content: fmt.Sprintf(
 		`Data e hora locais atuais: %s. Fuso: %s (UTC%+d). Idioma: %s. Se o usuário pedir um lembrete/alarme com horário ou data, chame a ferramenta create_alert (resolvendo datas relativas a ESTE momento) em vez de só responder.`,
-		now.Format("2006-01-02 15:04:05 (Monday)"), zoneName, offsetSec/3600, language)}
+		stamp, zoneName, offsetH, language)}
 }
 
 func findToolCall(calls []ai.ToolCall, name string) (ai.ToolCall, bool) {

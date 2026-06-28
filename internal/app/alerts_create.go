@@ -174,8 +174,7 @@ func (s *AlertsService) parseWhen(text, contextMessage string, now time.Time) (a
 }
 
 func buildAlertPrompt(text, contextMessage string, now time.Time, language string) []ai.Message {
-	zoneName, offsetSec := now.Zone()
-	offsetH := offsetSec / 3600
+	stamp, zoneName, offsetH := localTimeHeader(now)
 	noteLine := ""
 	if contextMessage != "" {
 		noteLine = fmt.Sprintf("\nO alerta refere-se à nota: %q. Use-a como \"message\" se o usuário não disser outro texto.", contextMessage)
@@ -186,7 +185,7 @@ Resolva datas/horas relativas ("amanhã", "sexta", "às 9h") em relação a ESTE
 Responda APENAS com JSON, sem cercas:
 {"message":"<texto curto do lembrete>","fire_at":"<ISO 8601 com offset, ex 2026-06-26T09:00:00%+03d:00>","recurrence":<null ou {"freq":"daily|weekly|monthly|yearly","interval":1,"weekday":"mon","time":"09:00"}>}
 "recurrence" é null para lembrete único; "weekday" só em "weekly". Nunca invente; se faltar horário, assuma 09:00 local.`,
-		now.Format("2006-01-02 15:04:05 (Monday)"), zoneName, offsetH, language, noteLine, offsetH)
+		stamp, zoneName, offsetH, language, noteLine, offsetH)
 	return []ai.Message{
 		{Role: "system", Content: system},
 		{Role: "user", Content: text},

@@ -14,7 +14,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
-	"gix/internal/ai"
 	"gix/internal/config"
 	"gix/internal/db"
 	"gix/internal/embed"
@@ -79,9 +78,9 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		}
 	}
 	chatSvc := NewChatService(cfgSvc, database, emit,
-		func(apiKey string) Streamer { return ai.New(apiKey) })
+		func(apiKey string) Streamer { return newProvider(apiKey) })
 	notesSvc := NewNotesService(cfgSvc, database,
-		func(apiKey string) Completer { return ai.New(apiKey) })
+		func(apiKey string) Completer { return newProvider(apiKey) })
 
 	notifSvc := notifications.New()
 
@@ -94,7 +93,7 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		}
 	}
 	alertsSvc := NewAlertsService(cfgSvc, database,
-		func(apiKey string) Completer { return ai.New(apiKey) },
+		func(apiKey string) Completer { return newProvider(apiKey) },
 		emit, onShow, notifSvc)
 
 	// Load the embedding model in the background so the UI starts instantly. The

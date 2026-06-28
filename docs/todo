@@ -13,6 +13,15 @@ notas (core business) - v1 do /note feita; futuro:
 - Configurar limite de linhas e modo de integração por nota (hoje só default global)
 - IA reorganiza uma nota sob demanda (ex: /tidy) — resumir já feito
 
+arquitetura (design patterns p/ expansão)
+- [ ] Tool registry no chat: cada ferramenta como interface (Schema + Handle), Send despacha pelo registry em vez do if create_alert inline (chat.go) — abre p/ create_note, search_notes, web_search sem inchar o laço de streaming
+- [ ] Provider de IA pluggável de verdade: registry por provider/modelo (Anthropic direto, OpenAI direto, Ollama local) — o seam já está centralizado em provider.go (newProvider); falta o registro por config/modelo quando surgir o 2º provider
+- [ ] Recorrência via Strategy (mapa freq→advanceFunc) quando adicionar frequências novas (a cada N horas, dias úteis, "última sexta do mês") — recurrence.go (hoje switch com 4 casos estáveis, ainda honesto)
+- [ ] Busca: RankSource pluggável (interface Rank(query) []int64) p/ somar recência / boost de tag / rerank às fontes FTS+vetor — rrf já funde N listas, falta extrair as fontes (notes_search.go)
+- [ ] Registry de ações de notificação (actionID→handler) quando passar de ~3 ações, mantendo o botão (RegisterCategory) e o handler juntos — shell.go / alerts_scheduler.go
+- [x] Builder de prompt: cabeçalho de data/fuso/idioma centralizado (localTimeHeader em prompt.go) — removeu a duplicação de capture/alert/chat
+- [x] Provider de IA: construção centralizada em newProvider (provider.go), um único ponto em vez de ai.New repetido em 3 serviços
+
 feito
 - Links em markdown abrem no navegador (Browser.OpenURL via Wails runtime)
 - Sistema de notas v1: /note <texto> com roteamento semântico por IA (anexar/criar), limite de linhas com escolha de overflow (resumir/parte 2/dividir por tema), data relativa resolvida para absoluta no texto

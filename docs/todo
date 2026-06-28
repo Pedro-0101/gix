@@ -7,6 +7,7 @@ features
 - Fazer atualizador remoto(por comando, notificar usuarios)
 - Adicionar área para comunicação do sistema com usuário
 - Adicionar interações com o sistema operacional
+- Integração com sistemas de agentes (Google, Outlook, etc.)
 
 notas (core business) - v1 do /note feita; futuro:
 - Afinar o roteamento: melhorar a decisão de anexar vs criar e a geração de títulos

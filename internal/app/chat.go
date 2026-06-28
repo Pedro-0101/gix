@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -28,23 +27,6 @@ type DonePayload struct {
 	Content string `json:"content"`
 }
 
-// createAlertTool deixa o modelo do chat agendar um lembrete em vez de só
-// responder em prosa. O app intercepta a chamada e pede confirmação ao usuário.
-var createAlertTool = ai.Tool{
-	Type: "function",
-	Function: ai.ToolFunction{
-		Name:        "create_alert",
-		Description: "Agenda um lembrete/alarme quando o usuário pede para ser lembrado de algo num horário ou data. Resolva datas relativas a partir do horário local atual informado no system prompt.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"message":{"type":"string"},"fire_at":{"type":"string","description":"ISO 8601 com offset"},"recurrence":{"type":["object","null"]}},"required":["message","fire_at"]}`),
-	},
-}
-
-type alertProposedPayload struct {
-	Message    string `json:"message"`
-	FireAt     string `json:"fireAt"`
-	Recurrence string `json:"recurrence"`
-}
-
 // chatToolSystem injeta o horário local atual para o modelo resolver datas
 // relativas ao chamar create_alert.
 func chatToolSystem(now time.Time, language string) ai.Message {
@@ -54,35 +36,12 @@ func chatToolSystem(now time.Time, language string) ai.Message {
 		stamp, zoneName, offsetH, language)}
 }
 
-func findToolCall(calls []ai.ToolCall, name string) (ai.ToolCall, bool) {
-	for _, c := range calls {
-		if c.Name == name {
-			return c, true
-		}
-	}
-	return ai.ToolCall{}, false
-}
-
-func parseAlertCall(c ai.ToolCall) (alertProposedPayload, error) {
-	var dec alertDecision
-	if err := json.Unmarshal([]byte(c.Arguments), &dec); err != nil {
-		return alertProposedPayload{}, err
-	}
-	if strings.TrimSpace(dec.FireAt) == "" {
-		return alertProposedPayload{}, fmt.Errorf("empty fire_at")
-	}
-	return alertProposedPayload{
-		Message:    strings.TrimSpace(dec.Message),
-		FireAt:     strings.TrimSpace(dec.FireAt),
-		Recurrence: marshalRecurrence(dec.Recurrence),
-	}, nil
-}
-
 type ChatService struct {
 	cfg       *ConfigService
 	db        *db.Database
 	emit      Emitter
 	newClient func(apiKey string) Streamer
+	tools     toolRegistry
 
 	mu         sync.Mutex
 	convID     int64
@@ -95,7 +54,7 @@ type ChatService struct {
 }
 
 func NewChatService(cfg *ConfigService, database *db.Database, emit Emitter, newClient func(apiKey string) Streamer) *ChatService {
-	return &ChatService{cfg: cfg, db: database, emit: emit, newClient: newClient}
+	return &ChatService{cfg: cfg, db: database, emit: emit, newClient: newClient, tools: defaultChatTools()}
 }
 
 func (s *ChatService) NewConversation() {
@@ -161,7 +120,7 @@ func (s *ChatService) Send(text string) {
 	go func() {
 		client := s.newClient(apiKey)
 		var sb strings.Builder
-		usage, toolCalls, streamErr := client.StreamTools(ctx, cfg.Model, msgs, []ai.Tool{createAlertTool}, func(delta string) {
+		usage, toolCalls, streamErr := client.StreamTools(ctx, cfg.Model, msgs, s.tools.schemas(), func(delta string) {
 			sb.WriteString(delta)
 			s.emit("chat:delta", delta)
 		})
@@ -189,33 +148,18 @@ func (s *ChatService) Send(text string) {
 		case streamErr != nil:
 			s.emit("chat:error", streamErr.Error())
 		default:
-			if call, ok := findToolCall(toolCalls, "create_alert"); ok {
-				if p, perr := parseAlertCall(call); perr == nil {
-					if p.Message != "" && futureOrRecurring(p.FireAt, p.Recurrence, time.Now()) {
-						s.emit("alert:proposed", p)
-						if full != "" {
-							s.persist(cid, gen, full)
-							s.emit("chat:done", DonePayload{Content: full})
-						} else {
-							s.persist(cid, gen, "(propôs um alerta)")
-						}
-						return
-					}
-					// Tool call that can't be scheduled (past time / empty message):
-					// give the user feedback instead of a dead-end chip.
-					if full == "" {
-						full = "Não consegui agendar esse lembrete."
-					}
-					s.persist(cid, gen, full)
-					s.emit("chat:done", DonePayload{Content: full})
-					return
+			result := s.tools.dispatch(toolCalls, s.emit, time.Now())
+			text := full
+			if text == "" {
+				text = result.Placeholder
+				if text == "" {
+					text = "(sem resposta)"
 				}
 			}
-			if full == "" {
-				full = "(sem resposta)"
+			s.persist(cid, gen, text)
+			if full != "" || !result.SuppressDone {
+				s.emit("chat:done", DonePayload{Content: text})
 			}
-			s.persist(cid, gen, full)
-			s.emit("chat:done", DonePayload{Content: full})
 		}
 	}()
 }

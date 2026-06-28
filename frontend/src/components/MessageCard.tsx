@@ -31,7 +31,7 @@ export function MessageCard({ role, content, label, pending, revealing }:
               : isUser
                 ? 'max-w-[78%] rounded-tr-sm bg-accent text-white'
                 : 'max-w-[78%] rounded-tl-sm bg-bubble text-fg'
-          } ${revealing ? 'reveal-mask' : ''}`
+          }`
         }
       >
         {pending ? (

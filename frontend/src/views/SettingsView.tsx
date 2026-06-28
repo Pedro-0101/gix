@@ -105,13 +105,20 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
           />
         </Row>
 
-        <Row label={tr(lang, 'close_hotkey')} i={7}>
+        <Row label={tr(lang, 'open_press_count')} i={7}>
+          <select className={field} value={cfg.open_press_count} onChange={(e) => set('open_press_count', Number(e.target.value))}>
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+          </select>
+        </Row>
+
+        <Row label={tr(lang, 'close_hotkey')} i={8}>
           <select className={field} value={cfg.close_key} onChange={(e) => set('close_key', e.target.value)}>
             {KEY_OPTIONS.map((k) => (<option key={k} value={k}>{k}</option>))}
           </select>
         </Row>
 
-        <Row label={tr(lang, 'close_interval')} i={8}>
+        <Row label={tr(lang, 'close_interval')} i={9}>
           <Slider
             ariaLabel={tr(lang, 'close_interval')}
             value={cfg.close_interval_ms}
@@ -120,6 +127,13 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
             step={50}
             onChange={(v) => set('close_interval_ms', v)}
           />
+        </Row>
+
+        <Row label={tr(lang, 'close_press_count')} i={10}>
+          <select className={field} value={cfg.close_press_count} onChange={(e) => set('close_press_count', Number(e.target.value))}>
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+          </select>
         </Row>
 
         <Row label={tr(lang, 'note_char_limit')} i={9}>

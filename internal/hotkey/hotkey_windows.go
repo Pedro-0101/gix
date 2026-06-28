@@ -33,6 +33,15 @@ var vkCodeMap = map[string]uint32{
 	"Enter":  0x0D,
 }
 
+var skipVKCodes = map[uint32]bool{
+	0x10: true, // VK_SHIFT
+	0x11: true, // VK_CONTROL
+	0x12: true, // VK_MENU (Alt)
+	0x14: true, // VK_CAPITAL
+	0x5B: true, // VK_LWIN
+	0x5C: true, // VK_RWIN
+}
+
 type kbdLLHookStruct struct {
 	vkCode      uint32
 	scanCode    uint32
@@ -54,7 +63,7 @@ type msg struct {
 var (
 	hookCallback    uintptr
 	hookHandle      uintptr
-	winHookDetector *DoublePressDetector
+	winHookDetector *MultiPressDetector
 	winHookKeyCode  uint32 = 0x20
 )
 
@@ -69,20 +78,24 @@ func readKbdLLVkCode(lParam uintptr) uint32 {
 }
 
 func winLowLevelKeyboardProc(code int, wParam uintptr, lParam uintptr) uintptr {
-	if code >= 0 && wParam == wmKeydown {
-		if readKbdLLVkCode(lParam) == winHookKeyCode && winHookDetector != nil {
+	if code >= 0 && wParam == wmKeydown && winHookDetector != nil {
+		k := readKbdLLVkCode(lParam)
+		if k == winHookKeyCode {
 			winHookDetector.Press()
+		} else if !skipVKCodes[k] {
+			winHookDetector.PressOther()
 		}
 	}
 	ret, _, _ := procCallNextHookEx.Call(0, uintptr(code), wParam, lParam)
 	return ret
 }
 
-func startWindowsHook(openKey string, intervalMs int, fn func()) {
+func startWindowsHook(openKey string, intervalMs int, pressCount int, fn func()) {
 	winHookKeyCode = vkCodeMap[openKey]
-	winHookDetector = &DoublePressDetector{
+	winHookDetector = &MultiPressDetector{
 		fn:       fn,
 		interval: time.Duration(intervalMs) * time.Millisecond,
+		target:   pressCount,
 	}
 	hookCallback = syscall.NewCallback(winLowLevelKeyboardProc)
 
@@ -105,12 +118,13 @@ func startWindowsHook(openKey string, intervalMs int, fn func()) {
 	procUnhookWindowsHookEx.Call(hookHandle)
 }
 
-func startLinuxHook(openKey string, intervalMs int, fn func()) {}
+func startLinuxHook(openKey string, intervalMs int, pressCount int, fn func()) {}
 
 // Apply reaplica a configuração de hotkey em runtime (Windows).
-func Apply(openKey string, intervalMs int) {
+func Apply(openKey string, intervalMs int, pressCount int) {
 	winHookKeyCode = vkCodeMap[openKey]
 	if winHookDetector != nil {
 		winHookDetector.interval = time.Duration(intervalMs) * time.Millisecond
+		winHookDetector.target = pressCount
 	}
 }

@@ -207,11 +207,11 @@ func Run(assets fs.FS, trayIcon []byte) error {
 	menu.Add("Sair").OnClick(func(_ *application.Context) { wailsApp.Quit() })
 	tray.SetMenu(menu)
 
-	// Global hotkey (double-press of the configured open key) shows the window.
+	// Global hotkey (N presses of the configured open key) shows the window.
 	cur := cfgSvc.Current()
-	hotkey.Start(cur.OpenKey, cur.OpenIntervalMs, func() { showMain() })
+	hotkey.Start(cur.OpenKey, cur.OpenIntervalMs, cur.OpenPressCount, func() { showMain() })
 	cfgSvc.OnSave(func(c *config.Config) {
-		hotkey.Apply(c.OpenKey, c.OpenIntervalMs)
+		hotkey.Apply(c.OpenKey, c.OpenIntervalMs, c.OpenPressCount)
 	})
 
 	err = wailsApp.Run()

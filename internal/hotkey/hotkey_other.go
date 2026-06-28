@@ -2,8 +2,8 @@
 
 package hotkey
 
-func startWindowsHook(openKey string, intervalMs int, fn func()) {}
-func startLinuxHook(openKey string, intervalMs int, fn func()) {}
+func startWindowsHook(openKey string, intervalMs int, pressCount int, fn func()) {}
+func startLinuxHook(openKey string, intervalMs int, pressCount int, fn func()) {}
 
 // Apply is a no-op on unsupported platforms.
-func Apply(openKey string, intervalMs int) {}
+func Apply(openKey string, intervalMs int, pressCount int) {}

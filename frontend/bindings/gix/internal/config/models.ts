@@ -6,8 +6,10 @@ export interface Config {
     "language": string;
     "open_key": string;
     "open_interval_ms": number;
+    "open_press_count": number;
     "close_key": string;
     "close_interval_ms": number;
+    "close_press_count": number;
     "model": string;
     "api_key": string;
     "system_prompt": string;

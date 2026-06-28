@@ -4,9 +4,9 @@ import { CONFIG_FIELDS, KEY_OPTIONS, fieldChoices, findField } from './config-fi
 // The JSON keys of the Go Config struct (internal/config/config.go). If a field
 // is added there, it must be added here too — this guards that parity.
 const CONFIG_KEYS = [
-  'theme', 'language', 'open_key', 'open_interval_ms', 'close_key',
-  'close_interval_ms', 'model', 'api_key', 'system_prompt', 'opacity',
-  'note_char_limit',
+  'theme', 'language', 'open_key', 'open_interval_ms', 'open_press_count',
+  'close_key', 'close_interval_ms', 'close_press_count', 'model', 'api_key',
+  'system_prompt', 'opacity', 'note_char_limit',
 ]
 
 describe('CONFIG_FIELDS', () => {

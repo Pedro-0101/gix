@@ -6,31 +6,45 @@ import (
 )
 
 // Start inicia o listener de hotkey global para o SO atual.
-func Start(openKey string, intervalMs int, onTrigger func()) {
+// pressCount define quantos pressionamentos dentro do interval disparam onTrigger (2 = duplo, 3 = triplo).
+func Start(openKey string, intervalMs int, pressCount int, onTrigger func()) {
 	switch runtime.GOOS {
 	case "windows":
-		go startWindowsHook(openKey, intervalMs, onTrigger)
+		go startWindowsHook(openKey, intervalMs, pressCount, onTrigger)
 	case "linux":
-		go startLinuxHook(openKey, intervalMs, onTrigger)
+		go startLinuxHook(openKey, intervalMs, pressCount, onTrigger)
 	}
 }
 
-// DoublePressDetector detecta duplo-pressionamento de tecla dentro de um intervalo.
-type DoublePressDetector struct {
-	lastPress time.Time
-	fn        func()
-	interval  time.Duration
+// MultiPressDetector detecta N pressionamentos de tecla dentro de um intervalo.
+type MultiPressDetector struct {
+	firstPress time.Time
+	count      int
+	fn         func()
+	interval   time.Duration
+	target     int
 }
 
-// Press registra um pressionamento e dispara fn se for um duplo-pressionamento.
-func (d *DoublePressDetector) Press() {
+// Press registra um pressionamento e dispara fn se atingir o número alvo dentro do intervalo.
+func (d *MultiPressDetector) Press() {
 	now := time.Now()
-	if !d.lastPress.IsZero() && now.Sub(d.lastPress) <= d.interval {
-		d.lastPress = time.Time{}
+	if d.firstPress.IsZero() || now.Sub(d.firstPress) > d.interval {
+		d.firstPress = now
+		d.count = 1
+		return
+	}
+	d.count++
+	if d.count >= d.target {
+		d.firstPress = time.Time{}
+		d.count = 0
 		if d.fn != nil {
 			d.fn()
 		}
-		return
 	}
-	d.lastPress = now
+}
+
+// PressOther reseta o detector quando uma tecla diferente é pressionada no meio da sequência.
+func (d *MultiPressDetector) PressOther() {
+	d.firstPress = time.Time{}
+	d.count = 0
 }

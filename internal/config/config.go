@@ -60,8 +60,10 @@ type Config struct {
 	Language        string `json:"language"`
 	OpenKey         string `json:"open_key"`
 	OpenIntervalMs  int    `json:"open_interval_ms"`
+	OpenPressCount  int    `json:"open_press_count"`
 	CloseKey        string `json:"close_key"`
 	CloseIntervalMs int    `json:"close_interval_ms"`
+	ClosePressCount int    `json:"close_press_count"`
 	Model           string `json:"model"`
 	APIKey          string `json:"api_key"`
 	SystemPrompt    string `json:"system_prompt"`
@@ -81,8 +83,10 @@ func Default() *Config {
 		Language:        "pt",
 		OpenKey:         "Space",
 		OpenIntervalMs:  500,
+		OpenPressCount:  3,
 		CloseKey:        "Escape",
 		CloseIntervalMs: 500,
+		ClosePressCount: 2,
 		Model:           DefaultModel,
 		APIKey:          "",
 		SystemPrompt:    "Responda de forma direta e objetiva. Mantenha as respostas concisas e vá direto ao ponto.",
@@ -133,11 +137,17 @@ func Load() *Config {
 	if loaded.OpenIntervalMs <= 0 {
 		loaded.OpenIntervalMs = cfg.OpenIntervalMs
 	}
+	if loaded.OpenPressCount < 2 || loaded.OpenPressCount > 3 {
+		loaded.OpenPressCount = cfg.OpenPressCount
+	}
 	if loaded.CloseKey == "" {
 		loaded.CloseKey = cfg.CloseKey
 	}
 	if loaded.CloseIntervalMs <= 0 {
 		loaded.CloseIntervalMs = cfg.CloseIntervalMs
+	}
+	if loaded.ClosePressCount < 2 || loaded.ClosePressCount > 3 {
+		loaded.ClosePressCount = cfg.ClosePressCount
 	}
 	if loaded.Model == "" || !isValidModel(loaded.Model) {
 		loaded.Model = cfg.Model

@@ -37,3 +37,10 @@ export type AlertProposedPayload = { message: string; fireAt: string; recurrence
 // the shell asks the user to confirm before scheduling it.
 export const onAlertProposed = (cb: (p: AlertProposedPayload) => void) =>
   Events.On('alert:proposed', (e) => cb(e.data as AlertProposedPayload))
+
+export type NoteProposedPayload = { title: string; content: string; tags: string[] }
+
+// Fired by Go when the chat model proposes a note (create_note tool call) —
+// the shell asks the user to confirm before saving it.
+export const onNoteProposed = (cb: (p: NoteProposedPayload) => void) =>
+  Events.On('note:proposed', (e) => cb(e.data as NoteProposedPayload))

@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as Rea
 import { Window } from '@wailsio/runtime'
 import { motion } from 'motion/react'
 import { ChatService, ConfigService } from '../bindings/gix/internal/app'
-import { onWindowShown, onAlertFired, onAlertOpen, onAlertProposed } from './lib/events'
-import { recurrenceLabel, formatFireAt } from './lib/alerts'
+import { onWindowShown, onAlertFired, onAlertOpen } from './lib/events'
+
 import { frostColor } from './lib/frost'
 import { InputBar } from './components/InputBar'
 import { ShellPanel } from './components/ShellPanel'
@@ -18,6 +18,7 @@ import { useChat } from './lib/useChat'
 import { useInteraction } from './lib/useInteraction'
 import { useWindowFit } from './lib/useWindowFit'
 import { useCommandContext } from './lib/useCommandContext'
+import { useProposals } from './lib/useProposals'
 
 // Must match the Go side (internal/app/shell.go).
 const TOP_MAX_RATIO = 0.6
@@ -93,38 +94,9 @@ export default function App() {
     return () => { offFired(); offOpen() }
   }, [lang, setMsgs])
 
-  // Proposed alert wiring: a tool-call result from the AI proposes an alert;
-  // the shell asks the user to confirm before scheduling it.
-  useEffect(() => {
-    const off = onAlertProposed(async (p) => {
-      setStreaming(false)
-      // a resposta foi uma tool call: remove a bolha vazia do assistente
-      setMsgs((m) => {
-        const last = m[m.length - 1]
-        return last && last.role === 'assistant' && !last.content ? m.slice(0, -1) : m
-      })
-      const ctx = commandContextRef.current
-      const when = formatFireAt(p.fireAt, ctx.lang)
-      const rec = recurrenceLabel(ctx.lang, p.recurrence)
-      const suffix = [when, rec].filter(Boolean).join(' · ')
-      const ok = await ctx.choose({
-        title: `${tr(ctx.lang, 'alert_confirm')} ${suffix}`,
-        choices: [
-          { label: tr(ctx.lang, 'alert_yes'), value: 'yes' },
-          { label: tr(ctx.lang, 'alert_no'), value: 'no' },
-        ],
-      })
-      if (ok !== 'yes') return
-      const res = await ctx.alerts.createProposed({ message: p.message, fireAt: p.fireAt, recurrence: p.recurrence })
-      if (res.status === 'created') {
-        const w = formatFireAt(res.fireAtLocal, ctx.lang)
-        const r = recurrenceLabel(ctx.lang, res.recurrence)
-        const sfx = [w, r].filter(Boolean).join(' · ')
-        ctx.emitSystemMessage(`${tr(ctx.lang, 'alert_created')} **${res.message}**${sfx ? `  _${sfx}_` : ''}`)
-      }
-    })
-    return () => { off() }
-  }, [setStreaming, setMsgs])
+  // Proposed note/alert wiring: tool-call results from the AI propose creations;
+  // the shell asks the user to confirm before saving them.
+  useProposals({ setStreaming, setMsgs, commandContextRef })
 
   // Each time the window is shown, reset to a clean bar and focus it.
   useEffect(() => {

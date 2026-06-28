@@ -80,7 +80,7 @@ func Default() *Config {
 		CloseIntervalMs:      500,
 		Model:                DefaultModel,
 		APIKey:               "",
-		SystemPrompt:         "Responda de forma direta e objetiva.",
+		SystemPrompt:         "Responda de forma direta e objetiva. Se perceber que o usuário quer registrar ou que seria útil registrar uma informação importante (ideia, aprendizado, decisão etc., chame a ferramenta create_note com título, conteúdo em Markdown e tags — o sistema vai pedir confirmação antes de salvar.",
 		Opacity:              85,
 	}
 }

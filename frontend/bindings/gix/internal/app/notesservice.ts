@@ -31,6 +31,14 @@ export function Capture(text: string): $CancellablePromise<$models.CaptureResult
 }
 
 /**
+ * CreateFromProposal stores a note directly from already-parsed fields (no AI
+ * call). Used when the chat model proposes a note via tool call.
+ */
+export function CreateFromProposal(title: string, content: string, tags: string[] | null): $CancellablePromise<$models.CaptureResult> {
+    return $Call.ByID(704494767, title, content, tags);
+}
+
+/**
  * Delete removes a note and all of its derived rows (tags, vector, FTS).
  */
 export function Delete(id: number): $CancellablePromise<void> {

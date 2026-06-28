@@ -16,6 +16,15 @@ export interface CaptureResult {
 }
 
 // Outcome of creating an alert (Go app.CreateAlertResult).
+// Result of creating a note from a proposal (Go app.CreateFromProposal).
+export interface CreateFromProposalResult {
+  status: string
+  noteId: number
+  noteTitle: string
+  tags: string[]
+  message: string
+}
+
 export interface CreateAlertResult {
   status: string
   alertId: number
@@ -107,6 +116,9 @@ export interface CommandContext {
     // Replace a note's title/content/tags exactly as given (no AI). Used to apply
     // a summary and to undo it.
     update(id: number, title: string, content: string, tags: string[]): Promise<void>
+    // Store a note already formatted by the AI (tool call proposal), without
+    // another AI call. Used when the user confirms a note:proposed.
+    createFromProposal(title: string, content: string, tags: string[]): Promise<CreateFromProposalResult>
   }
   // Opens the search view with the given state (loading, then results).
   openSearch(state: SearchState): void

@@ -56,6 +56,7 @@ export function useCommandContext(d: Deps): CommandContext {
       ask: (query) => NotesService.Ask(query) as any,
       summarize: (id) => NotesService.Summarize(id) as any,
       update: (id, title, content, tags) => NotesService.Update(id, title, content, tags).then(() => {}),
+      createFromProposal: (title, content, tags) => NotesService.CreateFromProposal(title, content, tags) as any,
     },
     openSearch: (state) => {
       d.setSearchState(state)

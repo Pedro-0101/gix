@@ -112,6 +112,35 @@ func (s *NotesService) Capture(text string) (CaptureResult, error) {
 	return CaptureResult{Status: "created", NoteID: id, NoteTitle: title, Tags: tags, Tokens: tokens, Cost: cost, Alert: proposal}, nil
 }
 
+// CreateFromProposal stores a note directly from already-parsed fields (no AI
+// call). Used when the chat model proposes a note via tool call.
+func (s *NotesService) CreateFromProposal(title, content string, tags []string) (CaptureResult, error) {
+	if s.db == nil {
+		return CaptureResult{Status: "error", Message: "no_db"}, nil
+	}
+	title = strings.TrimSpace(title)
+	content = strings.TrimSpace(content)
+	if title == "" {
+		title = db.ExtractTitle(content)
+	}
+	normTags := normalizeTags(tags)
+
+	var vec []byte
+	dim := 0
+	if s.embedder != nil {
+		if v, eerr := s.embedder.EmbedDoc(title + "\n" + content); eerr == nil {
+			vec = embed.EncodeVector(v)
+			dim = len(v)
+		}
+	}
+
+	id, err := s.db.CreateNote(title, content, normTags, vec, dim)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	return CaptureResult{Status: "created", NoteID: id, NoteTitle: title, Tags: normTags}, nil
+}
+
 func parseCaptureJSON(s string) (captureDecision, error) {
 	var dec captureDecision
 	err := json.Unmarshal([]byte(stripFences(s)), &dec)

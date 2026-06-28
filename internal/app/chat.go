@@ -32,7 +32,7 @@ type DonePayload struct {
 func chatToolSystem(now time.Time, language string) ai.Message {
 	stamp, zoneName, offsetH := localTimeHeader(now)
 	return ai.Message{Role: "system", Content: fmt.Sprintf(
-		`Data e hora locais atuais: %s. Fuso: %s (UTC%+d). Idioma: %s. Se o usuário pedir um lembrete/alarme com horário ou data, chame a ferramenta create_alert (resolvendo datas relativas a ESTE momento) em vez de só responder.`,
+		`Data e hora locais atuais: %s. Fuso: %s (UTC%+d). Idioma: %s. Se o usuário pedir um lembrete/alarme com horário ou data, chame create_alert (resolvendo datas relativas a ESTE momento). Se o usuário quiser registrar uma anotação ou se for útil registrar algo, chame create_note.`,
 		stamp, zoneName, offsetH, language)}
 }
 

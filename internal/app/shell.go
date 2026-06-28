@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"syscall"
+	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -18,6 +20,35 @@ import (
 	"gix/internal/embed"
 	"gix/internal/hotkey"
 )
+
+var (
+	user32           = syscall.NewLazyDLL("user32.dll")
+	procGetCursorPos = user32.NewProc("GetCursorPos")
+)
+
+type _point struct {
+	X, Y int32
+}
+
+// cursorScreen returns the Screen that currently contains the mouse cursor.
+// Unlike mainWin.GetScreen() (which returns the screen the hidden window
+// happens to sit on, usually monitor 1), this picks the display the user is
+// actually working on — the same heuristic Spotlight/Raycast use.
+func cursorScreen(screens []*application.Screen) *application.Screen {
+	var pt _point
+	ret, _, _ := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	if ret == 0 {
+		return nil
+	}
+	for _, s := range screens {
+		b := s.PhysicalBounds
+		if int(pt.X) >= b.X && int(pt.X) < b.X+b.Width &&
+			int(pt.Y) >= b.Y && int(pt.Y) < b.Y+b.Height {
+			return s
+		}
+	}
+	return nil
+}
 
 // modelsDir is where the embedding model/tokenizer are cached, under the same
 // per-user config dir as the database (e.g. %AppData%/gix/models).
@@ -129,11 +160,16 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		},
 	})
 
-	// Show the palette collapsed and pinned to the top-centre of the active
-	// screen, then let the frontend reset/focus via the window:shown event.
+	// Show the palette collapsed and pinned to the top-centre of the monitor
+	// where the mouse cursor currently sits (instead of always opening on
+	// monitor 1), then let the frontend reset/focus via the window:shown event.
 	showMain := func() {
 		mainWin.SetSize(paletteWidth, collapsedHeight)
-		if s, err := mainWin.GetScreen(); err == nil && s != nil {
+		s := cursorScreen(wailsApp.Screen.GetAll())
+		if s == nil {
+			s, _ = mainWin.GetScreen()
+		}
+		if s != nil {
 			wa := s.WorkArea
 			mainWin.SetPosition(wa.X+(wa.Width-paletteWidth)/2, wa.Y+topOffset)
 		} else {

@@ -126,3 +126,22 @@ export interface SummarizeResult {
     "tokens": number;
     "cost": number;
 }
+
+/**
+ * TidyResult is the AI-reorganized version of a single note. Like Summarize it
+ * only returns the new body; the caller applies it via Update so the change is
+ * undoable. Unlike Summarize, Tidy preserves every fact — it restructures and
+ * reformats, it does not condense.
+ * 
+ * 	"ok"         reorganized note produced
+ * 	"no_api_key" the API key is missing
+ * 	"empty"      the note has no content to reorganize
+ * 	"error"      failure (see Message)
+ */
+export interface TidyResult {
+    "status": string;
+    "content": string;
+    "message": string;
+    "tokens": number;
+    "cost": number;
+}

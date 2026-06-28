@@ -9,6 +9,7 @@ import { findCommand } from './builtins/find'
 import { askCommand } from './builtins/ask'
 import { alertCommand } from './builtins/alert'
 import { summarizeCommand } from './builtins/summarize'
+import { tidyCommand } from './builtins/tidy'
 import { graphCommand } from './builtins/graph'
 
 // The single source of truth. New commands — including future user-defined ones —
@@ -21,6 +22,7 @@ export const commands: Command[] = [
   findCommand,
   askCommand,
   summarizeCommand,
+  tidyCommand,
   alertCommand,
   configCommand,
   historyCommand,

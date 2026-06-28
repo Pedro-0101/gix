@@ -283,6 +283,83 @@ func TestSummarizeMissingNote(t *testing.T) {
 	}
 }
 
+func TestTidyReturnsReorganizedContent(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Projeto", "fazer x; também y; lembrar de z e w", "projeto")
+	fake := &fakeCompleter{responses: []string{"## Tarefas\n- [ ] x\n- [ ] y\n- [ ] z\n- [ ] w"}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Tidy(id)
+	if err != nil {
+		t.Fatalf("Tidy: %v", err)
+	}
+	if res.Status != "ok" || !strings.Contains(res.Content, "Tarefas") {
+		t.Fatalf("unexpected tidy result: %+v", res)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("Tidy should call the AI exactly once, called %d", fake.calls)
+	}
+	// Tidy must not write: applying the result is the caller's job (undoable Update).
+	if n, _ := d.GetNote(id); strings.Contains(n.Content, "Tarefas") {
+		t.Fatalf("Tidy must not modify the note, got %q", n.Content)
+	}
+}
+
+func TestTidyEmptyContentDoesNotCallAI(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Vazia", "   ")
+	fake := &fakeCompleter{responses: []string{"should not be called"}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Tidy(id)
+	if err != nil {
+		t.Fatalf("Tidy: %v", err)
+	}
+	if res.Status != "empty" {
+		t.Fatalf("expected empty for blank note, got %+v", res)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Tidy must not call the AI for a blank note, called %d", fake.calls)
+	}
+}
+
+func TestTidyMissingNote(t *testing.T) {
+	d := notesTestDB(t)
+	fake := &fakeCompleter{responses: []string{"nope"}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Tidy(999)
+	if err != nil {
+		t.Fatalf("Tidy: %v", err)
+	}
+	if res.Status != "error" {
+		t.Fatalf("expected error for missing note, got %+v", res)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Tidy must not call the AI for a missing note")
+	}
+}
+
+func TestTidyNoAPIKey(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Nota", "algum conteúdo")
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+	fake := &fakeCompleter{responses: []string{"should not be called"}}
+	svc := NewNotesService(NewConfigService(), d, func(string) Completer { return fake })
+
+	res, err := svc.Tidy(id)
+	if err != nil {
+		t.Fatalf("Tidy: %v", err)
+	}
+	if res.Status != "no_api_key" {
+		t.Fatalf("expected no_api_key, got %+v", res)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Tidy must not call the AI without an API key")
+	}
+}
+
 func TestFindDoesNotCallAI(t *testing.T) {
 	d := notesTestDB(t)
 	addNote(t, d, "Carro", "motor do carro", "carro")

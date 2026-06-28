@@ -24,5 +24,6 @@ export type {
     GraphEdge,
     GraphNode,
     SearchResult,
-    SummarizeResult
+    SummarizeResult,
+    TidyResult
 } from "./models.js";

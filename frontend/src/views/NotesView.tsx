@@ -8,6 +8,7 @@ import { UndoToast } from '../components/UndoToast'
 import { NoteEditor } from './NoteEditor'
 import { moveSelection } from '../commands/interaction'
 import { createDeferredDelete, type DeferredDelete } from '../lib/deferredDelete'
+import { useNoteRewrite } from '../lib/useNoteRewrite'
 import { tr } from '../i18n'
 
 const DELETE_GRACE_MS = 5000
@@ -26,11 +27,6 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
   // alert for the selected note.
   const [alertFor, setAlertFor] = useState<number | null>(null)
   const [whenText, setWhenText] = useState('')
-  // True while a summary is being generated (disables the button).
-  const [summarizing, setSummarizing] = useState(false)
-  // The note as it was *before* a summary replaced its body, kept so the toast
-  // can restore it. Cleared after the grace period.
-  const [pendingSummary, setPendingSummary] = useState<{ note: Note } | null>(null)
   const activeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -124,37 +120,14 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
     setAlertFor(null); setWhenText('')
   }
 
-  // Auto-dismiss timer for the summary undo toast.
-  const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => { if (summaryTimer.current) clearTimeout(summaryTimer.current) }, [])
-
-  // Summarize the note with the AI and replace its body with the summary,
-  // keeping the original around so the toast can undo it.
-  const handleSummarize = async (note: Note) => {
-    setSummarizing(true)
-    try {
-      const res = await NotesService.Summarize(note.ID)
-      if (res.status !== 'ok' || !res.summary) return
-      const updated = await NotesService.Update(note.ID, note.Title, res.summary, note.Tags ?? [])
-      setNotes((list) => list.map((n) => (n.ID === updated.ID ? updated : n)))
-      setActiveId(updated.ID)
-      setPendingSummary({ note })
-      if (summaryTimer.current) clearTimeout(summaryTimer.current)
-      summaryTimer.current = setTimeout(() => setPendingSummary(null), DELETE_GRACE_MS)
-    } finally {
-      setSummarizing(false)
-    }
+  // Summarize and tidy share one "AI rewrites the body, with undo" flow; each gets
+  // its own instance. applyRewrite reconciles the list + selection after apply/undo.
+  const applyRewrite = (n: Note) => {
+    setNotes((list) => list.map((x) => (x.ID === n.ID ? n : x)))
+    setActiveId(n.ID)
   }
-
-  const handleUndoSummary = async () => {
-    if (!pendingSummary) return
-    const { note } = pendingSummary
-    const restored = await NotesService.Update(note.ID, note.Title, note.Content, note.Tags ?? [])
-    setNotes((list) => list.map((n) => (n.ID === restored.ID ? restored : n)))
-    setActiveId(restored.ID)
-    setPendingSummary(null)
-    if (summaryTimer.current) clearTimeout(summaryTimer.current)
-  }
+  const summary = useNoteRewrite(DELETE_GRACE_MS, applyRewrite)
+  const tidy = useNoteRewrite(DELETE_GRACE_MS, applyRewrite)
 
   const handleUndo = () => {
     if (!pendingDelete) return
@@ -233,12 +206,27 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
                 </svg>
                 {tr(lang, 'alert_from_note')}
               </Button>
-              <Button variant="ghost" disabled={summarizing} onClick={() => handleSummarize(active)} className="gap-1">
+              <Button variant="ghost" disabled={summary.busy}
+                onClick={() => summary.run(active, async (id) => {
+                  const r = await NotesService.Summarize(id)
+                  return r.status === 'ok' ? r.summary : null
+                })} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round" className="size-4">
                   <path d="M4 6h16M4 12h16M4 18h10" />
                 </svg>
                 {tr(lang, 'summarize')}
+              </Button>
+              <Button variant="ghost" disabled={tidy.busy}
+                onClick={() => tidy.run(active, async (id) => {
+                  const r = await NotesService.Tidy(id)
+                  return r.status === 'ok' ? r.content : null
+                })} className="gap-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round" className="size-4">
+                  <path d="M3 6h18M7 12h10M10 18h4" />
+                </svg>
+                {tr(lang, 'tidy')}
               </Button>
               <Button variant="ghost" onClick={() => setEditingId(active.ID)} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
@@ -287,11 +275,18 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
         onUndo={handleUndo}
       />
       <UndoToast
-        open={!!pendingSummary}
+        open={!!summary.pending}
         message={tr(lang, 'note_summarized')}
-        title={pendingSummary?.note.Title ?? ''}
+        title={summary.pending?.note.Title ?? ''}
         undoLabel={tr(lang, 'undo')}
-        onUndo={handleUndoSummary}
+        onUndo={summary.undo}
+      />
+      <UndoToast
+        open={!!tidy.pending}
+        message={tr(lang, 'note_tidied')}
+        title={tidy.pending?.note.Title ?? ''}
+        undoLabel={tr(lang, 'undo')}
+        onUndo={tidy.undo}
       />
     </div>
   )

@@ -55,6 +55,7 @@ export function useCommandContext(d: Deps): CommandContext {
       find: (query) => NotesService.Find(query).then((r) => (r ?? []) as any),
       ask: (query) => NotesService.Ask(query) as any,
       summarize: (id) => NotesService.Summarize(id) as any,
+      tidy: (id) => NotesService.Tidy(id) as any,
       update: (id, title, content, tags) => NotesService.Update(id, title, content, tags).then(() => {}),
       createFromProposal: (title, content, tags) => NotesService.CreateFromProposal(title, content, tags) as any,
       appendTo: (targetId, content, tags) => NotesService.AppendTo(targetId, content, tags) as any,

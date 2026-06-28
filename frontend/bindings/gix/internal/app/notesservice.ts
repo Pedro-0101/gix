@@ -87,6 +87,16 @@ export function Summarize(id: number): $CancellablePromise<$models.SummarizeResu
 }
 
 /**
+ * Tidy asks the AI to reorganize one note — group related points, add structure
+ * (headings/lists/tasks), fix the Markdown, order it logically — without removing
+ * or inventing information. It does not modify the note; the frontend applies the
+ * result via Update (so the change is undoable) when the user confirms.
+ */
+export function Tidy(id: number): $CancellablePromise<$models.TidyResult> {
+    return $Call.ByID(117830173, id);
+}
+
+/**
  * Update replaces a note's title, content and tags exactly as the user typed
  * them — no AI, no cost. The text is re-embedded locally (free) when the model
  * is loaded so semantic search stays in sync; otherwise the note keeps no vector

@@ -65,6 +65,15 @@ export interface SummarizeResult {
   message: string
 }
 
+// Result of tidying one note (Go app.TidyResult). Like SummarizeResult the new
+// body is returned only; the caller applies it via notes.update (undoable). Unlike
+// a summary it preserves every fact — it reorganizes, it doesn't condense.
+export interface TidyResult {
+  status: string
+  content: string
+  message: string
+}
+
 // The state driving the search view, set via CommandContext.openSearch. While
 // `loading` is true the view shows a spinner; for mode 'ask' the summary panel
 // renders once the answer arrives.
@@ -119,6 +128,9 @@ export interface CommandContext {
     // Summarize one note with the AI (no change applied); the caller persists the
     // result via update.
     summarize(id: number): Promise<SummarizeResult>
+    // Reorganize one note with the AI without condensing (no change applied); the
+    // caller persists the result via update so it's undoable.
+    tidy(id: number): Promise<TidyResult>
     // Replace a note's title/content/tags exactly as given (no AI). Used to apply
     // a summary and to undo it.
     update(id: number, title: string, content: string, tags: string[]): Promise<void>

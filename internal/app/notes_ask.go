@@ -121,6 +121,68 @@ Idioma da resposta: %s. Responda APENAS com o resumo, sem preâmbulo nem cercas.
 	return []ai.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
 }
 
+// TidyResult is the AI-reorganized version of a single note. Like Summarize it
+// only returns the new body; the caller applies it via Update so the change is
+// undoable. Unlike Summarize, Tidy preserves every fact — it restructures and
+// reformats, it does not condense.
+//
+//	"ok"         reorganized note produced
+//	"no_api_key" the API key is missing
+//	"empty"      the note has no content to reorganize
+//	"error"      failure (see Message)
+type TidyResult struct {
+	Status  string  `json:"status"`
+	Content string  `json:"content"`
+	Message string  `json:"message"`
+	Tokens  int     `json:"tokens"`
+	Cost    float64 `json:"cost"`
+}
+
+// Tidy asks the AI to reorganize one note — group related points, add structure
+// (headings/lists/tasks), fix the Markdown, order it logically — without removing
+// or inventing information. It does not modify the note; the frontend applies the
+// result via Update (so the change is undoable) when the user confirms.
+func (s *NotesService) Tidy(id int64) (TidyResult, error) {
+	if s.db == nil {
+		return TidyResult{Status: "error", Message: "no_db"}, nil
+	}
+	note, err := s.db.GetNote(id)
+	if err != nil {
+		return TidyResult{Status: "error", Message: err.Error()}, nil
+	}
+	if strings.TrimSpace(note.Content) == "" {
+		return TidyResult{Status: "empty"}, nil
+	}
+
+	cfg := s.cfg.Current()
+	apiKey := cfg.ResolveAPIKey()
+	if apiKey == "" {
+		return TidyResult{Status: "no_api_key"}, nil
+	}
+
+	client := s.newClient(apiKey)
+	raw, usage, err := client.Complete(context.Background(), cfg.Model, buildNoteTidyPrompt(note, cfg.Language))
+	if err != nil {
+		return TidyResult{Status: "error", Message: err.Error()}, nil
+	}
+	tokens, cost := usageCost(usage, cfg.Model)
+	return TidyResult{
+		Status:  "ok",
+		Content: strings.TrimSpace(stripFences(raw)),
+		Tokens:  tokens,
+		Cost:    cost,
+	}, nil
+}
+
+func buildNoteTidyPrompt(note db.Note, language string) []ai.Message {
+	system := fmt.Sprintf(`Você reorganiza uma anotação do usuário, melhorando a estrutura e a formatação SEM resumir.
+Preserve TODA a informação e os fatos — não invente, não remova e não encurte o conteúdo.
+Agrupe pontos relacionados, use títulos/seções, listas e tarefas "- [ ]" quando fizer sentido, corrija a formatação Markdown e ordene de forma lógica.
+Idioma da resposta: %s. Responda APENAS com a nota reorganizada em Markdown, sem preâmbulo nem cercas.`, language)
+	user := fmt.Sprintf("%s\n\n%s", note.Title, note.Content)
+	return []ai.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
+}
+
 func buildSummarizePrompt(query string, results []SearchResult) []ai.Message {
 	var b strings.Builder
 	for i, r := range results {

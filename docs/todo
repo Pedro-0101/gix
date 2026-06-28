@@ -13,8 +13,8 @@ features
 notas (core business) - v1 do /note feita; futuro:
 - [x] Roteamento anexar vs criar: captura busca notas semelhantes (vetorial), a IA decide anexar-a-X ou criar e o usuário confirma antes de anexar (notes_route.go: candidateNotes/validAttach/AppendTo; attach_to no buildCapturePrompt)
 - [x] Afinar geração de títulos e limiar de anexar: piso de cosseno attachMinSim=0.82 (e5-small) corta candidatos fracos antes do modelo; prompt de título mais específico (3-6 palavras, sem genéricos) — notes_route.go/notes_capture.go
-- Configurar limite de linhas e modo de integração por nota (hoje só default global)
-- IA reorganiza uma nota sob demanda (ex: /tidy) — resumir já feito
+- Configurar limite de linhas e modo de integração por nota — ATENÇÃO (verificado 2026-06-28): não existe limite de linhas/overflow no código (nem global); o "limite de linhas com escolha de overflow" listado em feito está superestimado. Isto é feature do zero: definir limite default, modos de integração (resumir/parte 2/dividir por tema) e só então o override por nota
+- [x] IA reorganiza uma nota sob demanda: /tidy (aliases organizar/arrumar) + botão na tela de notas reestruturam a nota preservando tudo (não resumem), com aplicar/desfazer; backend Tidy (notes_ask.go), useNoteRewrite extrai o fluxo "IA reescreve corpo + undo" compartilhado com o resumir
 
 arquitetura (design patterns p/ expansão)
 - [x] Tool registry no chat: ferramentas como interface (ChatTool: Schema + Handle), Send despacha por toolRegistry.dispatch/schemas em vez de if-por-tool (chat_tools.go). create_alert e create_note já rodam sobre ele; falta só registrar search_notes/web_search como novas ChatTool quando virarem feature

@@ -94,6 +94,14 @@ export default function App() {
     return () => { offFired(); offOpen() }
   }, [lang, setMsgs])
 
+  // The capability surface commands act through (see lib/useCommandContext.ts).
+  const commandContext = useCommandContext({
+    langRef, setView, setMsgs, setUsage, setSearchState, choose, prompt, slider, loadCfg,
+  })
+  // Ref sempre-atual do contexto, para efeitos (eventos) lerem a versão viva.
+  const commandContextRef = useRef(commandContext)
+  commandContextRef.current = commandContext
+
   // Proposed note/alert wiring: tool-call results from the AI propose creations;
   // the shell asks the user to confirm before saving them.
   useProposals({ setStreaming, setMsgs, commandContextRef })
@@ -142,14 +150,6 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [view])
-
-  // The capability surface commands act through (see lib/useCommandContext.ts).
-  const commandContext = useCommandContext({
-    langRef, setView, setMsgs, setUsage, setSearchState, choose, prompt, slider, loadCfg,
-  })
-  // Ref sempre-atual do contexto, para efeitos (eventos) lerem a versão viva.
-  const commandContextRef = useRef(commandContext)
-  commandContextRef.current = commandContext
 
   const send = () => {
     const text = input.trim()

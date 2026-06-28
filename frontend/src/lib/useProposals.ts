@@ -2,7 +2,8 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { onAlertProposed, onNoteProposed } from './events'
 import { recurrenceLabel, formatFireAt } from './alerts'
 import { tr } from '../i18n'
-import type { CommandContext, Msg } from '../types'
+import type { CommandContext } from '../commands/types'
+import type { Msg } from '../types'
 
 type Deps = {
   setStreaming: (v: boolean) => void

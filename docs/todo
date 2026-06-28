@@ -11,7 +11,8 @@ features
 - Configurar número de vezes que a tecla de atalho deve ser pressionada para abrir/fechar a janela
 
 notas (core business) - v1 do /note feita; futuro:
-- Afinar o roteamento: melhorar a decisão de anexar vs criar e a geração de títulos
+- [x] Roteamento anexar vs criar: captura busca notas semelhantes (vetorial), a IA decide anexar-a-X ou criar e o usuário confirma antes de anexar (notes_route.go: candidateNotes/validAttach/AppendTo; attach_to no buildCapturePrompt)
+- Afinar ainda: geração de títulos e o limiar/qualidade da decisão de anexar
 - Configurar limite de linhas e modo de integração por nota (hoje só default global)
 - IA reorganiza uma nota sob demanda (ex: /tidy) — resumir já feito
 

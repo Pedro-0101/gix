@@ -14,6 +14,16 @@ import * as db$0 from "../db/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AppendTo appends already-formatted content to the end of an existing note,
+ * re-embedding the combined text and keeping FTS/vector/tags in sync (tags are
+ * the union of old and new). Used when the capture router decides to attach and
+ * the user confirms. No AI call.
+ */
+export function AppendTo(targetID: number, content: string, tags: string[] | null): $CancellablePromise<$models.CaptureResult> {
+    return $Call.ByID(873500712, targetID, content, tags);
+}
+
+/**
  * Ask searches, then asks the AI to summarize the top notes in answer to the
  * query. Returns the summary plus the source notes it drew from.
  */

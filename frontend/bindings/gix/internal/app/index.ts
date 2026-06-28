@@ -17,6 +17,7 @@ export {
 export type {
     AlertProposal,
     AskResult,
+    AttachProposal,
     CaptureResult,
     CreateAlertResult,
     GraphData,

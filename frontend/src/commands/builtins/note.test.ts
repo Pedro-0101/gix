@@ -11,8 +11,14 @@ function mockCtx(capture?: Partial<CaptureResult>, chooseValue: string | null = 
     choose: vi.fn(async () => chooseValue),
     notes: {
       capture: vi.fn(async () => ({
-        status: 'created', noteId: 1, noteTitle: 'X', tags: [], message: '', ...capture,
+        status: 'created', noteId: 1, noteTitle: 'X', content: '', tags: [], message: '', ...capture,
       } as CaptureResult)),
+      appendTo: vi.fn(async () => ({
+        status: 'attached', noteId: 5, noteTitle: 'Carro', content: '', tags: ['carro'], message: '',
+      } as CaptureResult)),
+      createFromProposal: vi.fn(async () => ({
+        status: 'created', noteId: 2, noteTitle: 'Nova', tags: [], message: '',
+      })),
     },
     alerts: {
       create: vi.fn(),
@@ -77,5 +83,37 @@ describe('noteCommand', () => {
     const { ctx, ctxAny } = mockCtx({}, 'yes')
     await noteCommand.run(ctx, 'só uma nota')
     expect(ctxAny.choose).not.toHaveBeenCalled()
+  })
+
+  it('appends to the AI-picked note when the user confirms attach', async () => {
+    const { ctx, ctxAny, emitted } = mockCtx(
+      { status: 'attach_proposed', content: 'corpo novo', tags: ['carro'], attach: { targetId: 5, targetTitle: 'Carro' } },
+      'attach',
+    )
+    await noteCommand.run(ctx, 'mais um detalhe do carro')
+    expect(ctxAny.notes.appendTo).toHaveBeenCalledWith(5, 'corpo novo', ['carro'])
+    expect(ctxAny.notes.createFromProposal).not.toHaveBeenCalled()
+    expect(emitted[0]).toContain('Carro') // attached confirmation names the target
+  })
+
+  it('creates a new note when the user declines the attach', async () => {
+    const { ctx, ctxAny } = mockCtx(
+      { status: 'attach_proposed', content: 'corpo novo', noteTitle: 'Nova', tags: [], attach: { targetId: 5, targetTitle: 'Carro' } },
+      'create',
+    )
+    await noteCommand.run(ctx, 'algo diferente')
+    expect(ctxAny.notes.createFromProposal).toHaveBeenCalledWith('Nova', 'corpo novo', [])
+    expect(ctxAny.notes.appendTo).not.toHaveBeenCalled()
+  })
+
+  it('does nothing when the attach choice is cancelled', async () => {
+    const { ctx, ctxAny, emitted } = mockCtx(
+      { status: 'attach_proposed', content: 'x', attach: { targetId: 5, targetTitle: 'Carro' } },
+      null,
+    )
+    await noteCommand.run(ctx, 'x')
+    expect(ctxAny.notes.appendTo).not.toHaveBeenCalled()
+    expect(ctxAny.notes.createFromProposal).not.toHaveBeenCalled()
+    expect(emitted.length).toBe(0)
   })
 })

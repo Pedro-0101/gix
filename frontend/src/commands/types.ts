@@ -10,9 +10,15 @@ export interface CaptureResult {
   status: string
   noteId: number
   noteTitle: string
+  // The AI-formatted body. Carried back on an attach proposal so the frontend can
+  // either append it or create a new note without a second AI call.
+  content: string
   tags: string[]
   message: string
   alert?: { message: string; fireAt: string; recurrence: string }
+  // Set when status is 'attach_proposed': the existing note the AI judged this
+  // capture belongs to. The frontend confirms before appending.
+  attach?: { targetId: number; targetTitle: string }
 }
 
 // Outcome of creating an alert (Go app.CreateAlertResult).
@@ -119,6 +125,9 @@ export interface CommandContext {
     // Store a note already formatted by the AI (tool call proposal), without
     // another AI call. Used when the user confirms a note:proposed.
     createFromProposal(title: string, content: string, tags: string[]): Promise<CreateFromProposalResult>
+    // Append already-formatted content to an existing note (no AI). Used when the
+    // capture router proposes attaching and the user confirms.
+    appendTo(targetId: number, content: string, tags: string[]): Promise<CaptureResult>
   }
   // Opens the search view with the given state (loading, then results).
   openSearch(state: SearchState): void

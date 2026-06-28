@@ -25,6 +25,16 @@ export interface AskResult {
 }
 
 /**
+ * AttachProposal points a capture at an existing note the model judged it
+ * belongs to. Capture returns it (status "attach_proposed") instead of writing,
+ * so the frontend can confirm before AppendTo runs.
+ */
+export interface AttachProposal {
+    "targetId": number;
+    "targetTitle": string;
+}
+
+/**
  * CaptureResult is what the frontend gets after a /note.
  * 
  * 	"created"    note stored
@@ -35,11 +45,13 @@ export interface CaptureResult {
     "status": string;
     "noteId": number;
     "noteTitle": string;
+    "content": string;
     "tags": string[] | null;
     "message": string;
     "tokens": number;
     "cost": number;
     "alert": AlertProposal | null;
+    "attach": AttachProposal | null;
 }
 
 /**

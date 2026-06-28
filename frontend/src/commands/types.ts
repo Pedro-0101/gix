@@ -15,22 +15,18 @@ export interface CaptureResult {
   content: string
   tags: string[]
   message: string
+  // How many notes resulted; set by the 'split' overflow strategy.
+  count: number
   alert?: { message: string; fireAt: string; recurrence: string }
   // Set when status is 'attach_proposed': the existing note the AI judged this
   // capture belongs to. The frontend confirms before appending.
   attach?: { targetId: number; targetTitle: string }
+  // Set when status is 'overflow_proposed': appending would push the note past
+  // its size limit. The frontend asks how to handle it and calls resolveOverflow.
+  overflow?: { targetId: number; targetTitle: string; length: number; limit: number }
 }
 
 // Outcome of creating an alert (Go app.CreateAlertResult).
-// Result of creating a note from a proposal (Go app.CreateFromProposal).
-export interface CreateFromProposalResult {
-  status: string
-  noteId: number
-  noteTitle: string
-  tags: string[]
-  message: string
-}
-
 export interface CreateAlertResult {
   status: string
   alertId: number
@@ -136,10 +132,17 @@ export interface CommandContext {
     update(id: number, title: string, content: string, tags: string[]): Promise<void>
     // Store a note already formatted by the AI (tool call proposal), without
     // another AI call. Used when the user confirms a note:proposed.
-    createFromProposal(title: string, content: string, tags: string[]): Promise<CreateFromProposalResult>
+    createFromProposal(title: string, content: string, tags: string[]): Promise<CaptureResult>
     // Append already-formatted content to an existing note (no AI). Used when the
-    // capture router proposes attaching and the user confirms.
+    // capture router proposes attaching and the user confirms. Returns an
+    // 'overflow_proposed' result instead of writing when the note would exceed its
+    // size limit.
     appendTo(targetId: number, content: string, tags: string[]): Promise<CaptureResult>
+    // Resolve an overflow by applying the chosen strategy ('summarize' | 'part2' |
+    // 'split') to the content that didn't fit.
+    resolveOverflow(targetId: number, content: string, tags: string[], mode: string): Promise<CaptureResult>
+    // Set a per-note character-limit override (0 = inherit the global default).
+    setCharLimit(id: number, limit: number): Promise<void>
   }
   // Opens the search view with the given state (loading, then results).
   openSearch(state: SearchState): void

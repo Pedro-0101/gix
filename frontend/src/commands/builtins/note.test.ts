@@ -106,6 +106,38 @@ describe('noteCommand', () => {
     expect(ctxAny.notes.appendTo).not.toHaveBeenCalled()
   })
 
+  it('asks for an overflow strategy and resolves it when an append overflows', async () => {
+    const choices: (string | null)[] = ['attach', 'split'] // confirm attach, then pick split
+    let call = 0
+    const resolveOverflow = vi.fn(async () => ({
+      status: 'split', noteId: 9, noteTitle: 'Carro', tags: [], message: '', count: 3,
+    }))
+    const emitted: string[] = []
+    const ctx = {
+      lang: 'pt',
+      setView: vi.fn(),
+      emitSystemMessage: (m: string) => emitted.push(m),
+      choose: vi.fn(async () => choices[call++] ?? null),
+      notes: {
+        capture: vi.fn(async () => ({
+          status: 'attach_proposed', noteId: 0, noteTitle: 'Carro', content: 'corpo', tags: ['carro'],
+          message: '', count: 0, attach: { targetId: 5, targetTitle: 'Carro' },
+        })),
+        appendTo: vi.fn(async () => ({
+          status: 'overflow_proposed', noteId: 0, noteTitle: 'Carro', content: 'corpo', tags: ['carro'],
+          message: '', count: 0, overflow: { targetId: 5, targetTitle: 'Carro', length: 9000, limit: 8000 },
+        })),
+        createFromProposal: vi.fn(),
+        resolveOverflow,
+      },
+      alerts: { create: vi.fn(), createProposed: vi.fn() },
+    } as unknown as CommandContext
+
+    await noteCommand.run(ctx, 'mais um detalhe enorme do carro')
+    expect(resolveOverflow).toHaveBeenCalledWith(5, 'corpo', ['carro'], 'split')
+    expect(emitted[0]).toContain('Carro') // split confirmation names the note
+  })
+
   it('does nothing when the attach choice is cancelled', async () => {
     const { ctx, ctxAny, emitted } = mockCtx(
       { status: 'attach_proposed', content: 'x', attach: { targetId: 5, targetTitle: 'Carro' } },

@@ -48,14 +48,43 @@ async function routeAttach(ctx: CommandContext, text: string, res: CaptureResult
   if (choice === null) return // cancelled with Esc
 
   const attach = choice === 'attach'
-  const final = attach
+  let final: CaptureResult = attach
     ? await ctx.notes.appendTo(target.targetId, res.content, res.tags)
     : await ctx.notes.createFromProposal(res.noteTitle, res.content, res.tags)
+
+  // Appending can overflow the target note's size limit; if so, ask how to handle
+  // it and apply the chosen strategy before settling.
+  if (final.status === 'overflow_proposed') {
+    const resolved = await resolveOverflow(ctx, res, final)
+    if (resolved === null) return // cancelled
+    final = resolved
+  }
+  if (final.status === 'split') {
+    ctx.emitSystemMessage(`${tr(ctx.lang, 'note_split')} **${final.noteTitle}** (${final.count})`)
+    await maybeAlert(ctx, text, final.noteId, res.alert)
+    return
+  }
   if (final.status !== 'attached' && final.status !== 'created') {
     ctx.emitSystemMessage(tr(ctx.lang, 'note_error') + final.message)
     return
   }
   await settleNote(ctx, text, final.noteId, final.noteTitle, final.tags, attach, res.alert)
+}
+
+// resolveOverflow asks the user which overflow strategy to apply and runs it.
+// Returns the resolved result, or null if the user cancels (Esc).
+async function resolveOverflow(ctx: CommandContext, res: CaptureResult, overflowed: CaptureResult) {
+  const target = overflowed.overflow!
+  const mode = await ctx.choose({
+    title: `${tr(ctx.lang, 'note_overflow_q')} ${target.targetTitle} (${target.length}/${target.limit})`,
+    choices: [
+      { label: tr(ctx.lang, 'note_overflow_summarize'), value: 'summarize' },
+      { label: tr(ctx.lang, 'note_overflow_part2'), value: 'part2' },
+      { label: tr(ctx.lang, 'note_overflow_split'), value: 'split' },
+    ],
+  })
+  if (mode === null) return null
+  return ctx.notes.resolveOverflow(target.targetId, res.content, res.tags, mode)
 }
 
 // settleNote posts the created/attached confirmation and then runs the alert

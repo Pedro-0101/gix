@@ -50,8 +50,14 @@ export interface CaptureResult {
     "message": string;
     "tokens": number;
     "cost": number;
+
+    /**
+     * Count is how many notes resulted, set by the "split" overflow strategy.
+     */
+    "count": number;
     "alert": AlertProposal | null;
     "attach": AttachProposal | null;
+    "overflow": OverflowProposal | null;
 }
 
 /**
@@ -94,6 +100,26 @@ export interface GraphNode {
     "id": number;
     "title": string;
     "tags": string[] | null;
+}
+
+/**
+ * OverflowProposal is returned (status "overflow_proposed") when appending to a
+ * note would push it past its size limit. The frontend asks the user which
+ * strategy to take and calls ResolveOverflow; nothing is written until then.
+ */
+export interface OverflowProposal {
+    "targetId": number;
+    "targetTitle": string;
+
+    /**
+     * projected character count after the append
+     */
+    "length": number;
+
+    /**
+     * the effective limit it would exceed
+     */
+    "limit": number;
 }
 
 /**

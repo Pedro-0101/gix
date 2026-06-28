@@ -59,6 +59,9 @@ export function useCommandContext(d: Deps): CommandContext {
       update: (id, title, content, tags) => NotesService.Update(id, title, content, tags).then(() => {}),
       createFromProposal: (title, content, tags) => NotesService.CreateFromProposal(title, content, tags) as any,
       appendTo: (targetId, content, tags) => NotesService.AppendTo(targetId, content, tags) as any,
+      resolveOverflow: (targetId, content, tags, mode) =>
+        NotesService.ResolveOverflow(targetId, content, tags, mode) as any,
+      setCharLimit: (id, limit) => NotesService.SetCharLimit(id, limit).then(() => {}),
     },
     openSearch: (state) => {
       d.setSearchState(state)

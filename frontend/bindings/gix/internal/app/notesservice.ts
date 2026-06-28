@@ -78,6 +78,27 @@ export function List(): $CancellablePromise<db$0.Note[] | null> {
 }
 
 /**
+ * ResolveOverflow applies the user's chosen strategy for content that overflowed
+ * a note (see AppendTo). mode is one of:
+ * 
+ * 	"summarize" — merge old+new, ask the AI to condense the combined note to fit
+ * 	"part2"     — leave the note as-is, put the new content in a linked sibling
+ * 	"split"     — merge, then ask the AI to divide everything into themed notes
+ */
+export function ResolveOverflow(targetID: number, content: string, tags: string[] | null, mode: string): $CancellablePromise<$models.CaptureResult> {
+    return $Call.ByID(1700925705, targetID, content, tags, mode);
+}
+
+/**
+ * SetCharLimit sets a per-note size override in characters; 0 clears it so the
+ * note falls back to the global default (config.NoteCharLimit). Negative values
+ * are clamped to 0.
+ */
+export function SetCharLimit(id: number, limit: number): $CancellablePromise<void> {
+    return $Call.ByID(2052939502, id, limit);
+}
+
+/**
  * Summarize asks the AI to condense one note into a shorter Markdown summary. It
  * does not modify the note; the frontend applies the result via Update (so the
  * change is undoable) when the user confirms.

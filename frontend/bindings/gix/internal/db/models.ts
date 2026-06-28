@@ -44,5 +44,11 @@ export interface Note {
     "Title": string;
     "Content": string;
     "Tags": string[] | null;
+
+    /**
+     * CharLimit is a per-note size override in characters; 0 means inherit the
+     * global default (config.NoteCharLimit). See the overflow handling in app.
+     */
+    "CharLimit": number;
     "CreatedAt": string;
 }

@@ -55,6 +55,7 @@ export const CONFIG_FIELDS: FieldDef[] = [
   { key: 'close_key', labelKey: 'close_hotkey', kind: 'enum',
     choices: () => KEY_OPTIONS.map((k) => ({ label: k, value: k })) },
   { key: 'close_interval_ms', labelKey: 'close_interval', kind: 'number', min: 100, max: 2000, step: 50, validate: positiveInt },
+  { key: 'note_char_limit', labelKey: 'note_char_limit', kind: 'number', min: 1000, max: 50000, step: 1000, validate: inRange(1000, 50000) },
   { key: 'api_key', labelKey: 'api_key', kind: 'text' },
   { key: 'system_prompt', labelKey: 'system_prompt', kind: 'text' },
 ]

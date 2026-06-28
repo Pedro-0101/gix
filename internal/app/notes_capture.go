@@ -9,7 +9,6 @@ import (
 
 	"gix/internal/ai"
 	"gix/internal/db"
-	"gix/internal/embed"
 )
 
 // AlertProposal é um lembrete que o modelo de captura detectou dentro da nota.
@@ -27,16 +26,19 @@ type AlertProposal struct {
 //	"no_api_key" the API key is missing
 //	"error"      failure (see Message)
 type CaptureResult struct {
-	Status    string          `json:"status"`
-	NoteID    int64           `json:"noteId"`
-	NoteTitle string          `json:"noteTitle"`
-	Content   string          `json:"content"`
-	Tags      []string        `json:"tags"`
-	Message   string          `json:"message"`
-	Tokens    int             `json:"tokens"`
-	Cost      float64         `json:"cost"`
-	Alert     *AlertProposal  `json:"alert"`
-	Attach    *AttachProposal `json:"attach"`
+	Status    string   `json:"status"`
+	NoteID    int64    `json:"noteId"`
+	NoteTitle string   `json:"noteTitle"`
+	Content   string   `json:"content"`
+	Tags      []string `json:"tags"`
+	Message   string   `json:"message"`
+	Tokens    int      `json:"tokens"`
+	Cost      float64  `json:"cost"`
+	// Count is how many notes resulted, set by the "split" overflow strategy.
+	Count    int               `json:"count"`
+	Alert    *AlertProposal    `json:"alert"`
+	Attach   *AttachProposal   `json:"attach"`
+	Overflow *OverflowProposal `json:"overflow"`
 }
 
 // captureDecision is the JSON the model returns when formatting a capture.
@@ -106,15 +108,7 @@ func (s *NotesService) Capture(text string) (CaptureResult, error) {
 		}, nil
 	}
 
-	var vec []byte
-	dim := 0
-	if s.embedder != nil {
-		if v, eerr := s.embedder.EmbedDoc(title + "\n" + content); eerr == nil {
-			vec = embed.EncodeVector(v)
-			dim = len(v)
-		}
-	}
-
+	vec, dim := s.embedFor(title, content)
 	id, err := s.db.CreateNote(title, content, tags, vec, dim)
 	if err != nil {
 		return CaptureResult{}, err
@@ -153,15 +147,7 @@ func (s *NotesService) CreateFromProposal(title, content string, tags []string) 
 	}
 	normTags := normalizeTags(tags)
 
-	var vec []byte
-	dim := 0
-	if s.embedder != nil {
-		if v, eerr := s.embedder.EmbedDoc(title + "\n" + content); eerr == nil {
-			vec = embed.EncodeVector(v)
-			dim = len(v)
-		}
-	}
-
+	vec, dim := s.embedFor(title, content)
 	id, err := s.db.CreateNote(title, content, normTags, vec, dim)
 	if err != nil {
 		return CaptureResult{}, err

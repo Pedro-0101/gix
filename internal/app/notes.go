@@ -67,19 +67,23 @@ func (s *NotesService) Update(id int64, title, content string, tags []string) (d
 	}
 	normTags := normalizeTagsUncapped(tags)
 
-	var vec []byte
-	dim := 0
-	if s.embedder != nil {
-		if v, eerr := s.embedder.EmbedDoc(title + "\n" + content); eerr == nil {
-			vec = embed.EncodeVector(v)
-			dim = len(v)
-		}
-	}
-
-	if err := s.db.UpdateNote(id, title, content, normTags, vec, dim); err != nil {
+	if err := s.storeNoteBody(id, title, content, normTags); err != nil {
 		return db.Note{}, err
 	}
 	return s.db.GetNote(id)
+}
+
+// SetCharLimit sets a per-note size override in characters; 0 clears it so the
+// note falls back to the global default (config.NoteCharLimit). Negative values
+// are clamped to 0.
+func (s *NotesService) SetCharLimit(id int64, limit int) error {
+	if s.db == nil {
+		return fmt.Errorf("no_db")
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	return s.db.SetNoteCharLimit(id, limit)
 }
 
 // Delete removes a note and all of its derived rows (tags, vector, FTS).
@@ -91,6 +95,29 @@ func (s *NotesService) Delete(id int64) error {
 }
 
 // --- shared helpers ---
+
+// embedFor returns the serialized embedding vector and its dimension for a note's
+// title+content, or (nil, 0) when the embedder isn't loaded yet or fails. Callers
+// pass the result straight to db.CreateNote/UpdateNote, which store no vector for
+// an empty blob (semantic search degrades to full-text until the model warms up).
+func (s *NotesService) embedFor(title, content string) ([]byte, int) {
+	if s.embedder == nil {
+		return nil, 0
+	}
+	v, err := s.embedder.EmbedDoc(title + "\n" + content)
+	if err != nil {
+		return nil, 0
+	}
+	return embed.EncodeVector(v), len(v)
+}
+
+// storeNoteBody re-embeds and writes title/content/tags over an existing note,
+// keeping FTS/vector in sync. Shared by the overflow strategies that replace a
+// note's body.
+func (s *NotesService) storeNoteBody(id int64, title, content string, tags []string) error {
+	vec, dim := s.embedFor(title, content)
+	return s.db.UpdateNote(id, title, content, tags, vec, dim)
+}
 
 // normalizeTagsUncapped trims, lowercases, drops empties and de-dupes, with no
 // limit on count. Used for manual edits, where the user is in control.

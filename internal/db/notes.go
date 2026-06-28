@@ -6,10 +6,13 @@ import "strings"
 // Tags are AI-extracted. The semantic vector lives in note_vectors and the
 // searchable text in the notes_fts virtual table (kept in sync by CreateNote).
 type Note struct {
-	ID        int64
-	Title     string
-	Content   string
-	Tags      []string
+	ID      int64
+	Title   string
+	Content string
+	Tags    []string
+	// CharLimit is a per-note size override in characters; 0 means inherit the
+	// global default (config.NoteCharLimit). See the overflow handling in app.
+	CharLimit int
 	CreatedAt string
 }
 
@@ -108,12 +111,19 @@ func (d *Database) UpdateNote(id int64, title, content string, tags []string, ve
 	return tx.Commit()
 }
 
+// SetNoteCharLimit sets a note's per-note size override (in characters). 0 clears
+// the override so the note falls back to the global default.
+func (d *Database) SetNoteCharLimit(id int64, limit int) error {
+	_, err := d.db.Exec("UPDATE notes SET char_limit = ? WHERE id = ?", limit, id)
+	return err
+}
+
 // GetNote returns one note with its tags.
 func (d *Database) GetNote(id int64) (Note, error) {
 	var n Note
 	err := d.db.QueryRow(
-		"SELECT id, title, content, created_at FROM notes WHERE id = ?", id).
-		Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt)
+		"SELECT id, title, content, char_limit, created_at FROM notes WHERE id = ?", id).
+		Scan(&n.ID, &n.Title, &n.Content, &n.CharLimit, &n.CreatedAt)
 	if err != nil {
 		return Note{}, err
 	}
@@ -127,7 +137,7 @@ func (d *Database) GetNote(id int64) (Note, error) {
 // ListNotes returns every note, newest first, each with its tags.
 func (d *Database) ListNotes() ([]Note, error) {
 	rows, err := d.db.Query(
-		"SELECT id, title, content, created_at FROM notes ORDER BY created_at DESC, id DESC")
+		"SELECT id, title, content, char_limit, created_at FROM notes ORDER BY created_at DESC, id DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +146,7 @@ func (d *Database) ListNotes() ([]Note, error) {
 	var out []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CharLimit, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -158,7 +168,7 @@ func (d *Database) NotesByIDs(ids []int64) ([]Note, error) {
 		args[i] = id
 	}
 	rows, err := d.db.Query(
-		"SELECT id, title, content, created_at FROM notes WHERE id IN ("+placeholders+")", args...)
+		"SELECT id, title, content, char_limit, created_at FROM notes WHERE id IN ("+placeholders+")", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +177,7 @@ func (d *Database) NotesByIDs(ids []int64) ([]Note, error) {
 	var out []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CharLimit, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, n)

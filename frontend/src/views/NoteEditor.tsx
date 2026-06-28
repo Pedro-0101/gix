@@ -19,22 +19,35 @@ const sameTags = (a: string[], b: string[]) =>
 export function NoteEditor({
   lang,
   note,
+  defaultCharLimit,
   onSave,
   onCancel,
 }: {
   lang: string
   note: Note
-  onSave: (title: string, content: string, tags: string[]) => void
+  defaultCharLimit: number
+  onSave: (title: string, content: string, tags: string[], charLimit: number) => void
   onCancel: () => void
 }) {
   const [title, setTitle] = useState(note.Title)
   const [content, setContent] = useState(note.Content)
   const [tags, setTags] = useState<string[]>(note.Tags ?? [])
   const [tagInput, setTagInput] = useState('')
+  const [charLimit, setCharLimit] = useState(note.CharLimit ?? 0)
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
-  const dirty = title !== note.Title || content !== note.Content || !sameTags(tags, note.Tags ?? [])
+  // Count code points (close to the Go rune count the backend enforces) against
+  // the effective limit: the per-note override when set, else the global default.
+  const charCount = [...content].length
+  const effectiveLimit = charLimit > 0 ? charLimit : defaultCharLimit
+  const over = effectiveLimit > 0 && charCount > effectiveLimit
+
+  const dirty =
+    title !== note.Title ||
+    content !== note.Content ||
+    charLimit !== (note.CharLimit ?? 0) ||
+    !sameTags(tags, note.Tags ?? [])
 
   useEffect(() => {
     titleRef.current?.focus()
@@ -81,7 +94,7 @@ export function NoteEditor({
   const save = () => {
     // Fold any half-typed tag into the list before saving.
     const finalTags = tagInput.trim() ? addTags(tags, tagInput) : tags
-    onSave(title.trim(), content, finalTags)
+    onSave(title.trim(), content, finalTags, charLimit)
   }
 
   return (
@@ -141,6 +154,20 @@ export function NoteEditor({
           </div>
         </label>
 
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">
+            {tr(lang, 'editor_limit')} <span className="text-muted/70">({tr(lang, 'editor_limit_hint')})</span>
+          </span>
+          <input
+            type="number"
+            min={0}
+            className={`${field} w-32`}
+            value={charLimit || ''}
+            placeholder="0"
+            onChange={(e) => setCharLimit(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          />
+        </label>
+
         <textarea
           className={`${field} min-h-0 flex-1 resize-none leading-relaxed`}
           value={content}
@@ -148,6 +175,9 @@ export function NoteEditor({
           spellCheck={false}
           onChange={(e) => setContent(e.target.value)}
         />
+        <span className={`self-end text-xs tabular-nums ${over ? 'text-danger' : 'text-muted'}`}>
+          {charCount}{effectiveLimit > 0 ? ` / ${effectiveLimit}` : ''}
+        </span>
       </div>
 
       {confirmingDiscard && (

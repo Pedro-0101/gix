@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"gix/internal/db"
-	"gix/internal/embed"
 )
 
 // maxCandidates is how many existing notes (most semantically similar first) are
@@ -125,15 +124,16 @@ func (s *NotesService) AppendTo(targetID int64, content string, tags []string) (
 	merged := strings.TrimSpace(note.Content) + "\n\n" + content
 	mergedTags := normalizeTagsUncapped(append(append([]string{}, note.Tags...), tags...))
 
-	var vec []byte
-	dim := 0
-	if s.embedder != nil {
-		if v, eerr := s.embedder.EmbedDoc(note.Title + "\n" + merged); eerr == nil {
-			vec = embed.EncodeVector(v)
-			dim = len(v)
-		}
+	// If appending would push the note past its size limit, don't write — hand the
+	// frontend an overflow proposal so the user picks a strategy (ResolveOverflow).
+	if op := s.overflowProposal(note, merged); op != nil {
+		return CaptureResult{
+			Status: "overflow_proposed", NoteTitle: note.Title, Content: content, Tags: tags,
+			Overflow: op,
+		}, nil
 	}
-	if err := s.db.UpdateNote(targetID, note.Title, merged, mergedTags, vec, dim); err != nil {
+
+	if err := s.storeNoteBody(targetID, note.Title, merged, mergedTags); err != nil {
 		return CaptureResult{}, err
 	}
 	return CaptureResult{Status: "attached", NoteID: targetID, NoteTitle: note.Title, Tags: mergedTags}, nil

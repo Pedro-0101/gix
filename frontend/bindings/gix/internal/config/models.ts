@@ -17,4 +17,12 @@ export interface Config {
      * Higher is more opaque; the remainder lets the acrylic backdrop show through.
      */
     "opacity": number;
+
+    /**
+     * NoteCharLimit is the global default size ceiling for a single note, in
+     * characters (runes). When a capture append would push a note past it, the
+     * user is asked how to handle the overflow. A per-note override lives in the
+     * notes table (0 there = inherit this default).
+     */
+    "note_char_limit": number;
 }

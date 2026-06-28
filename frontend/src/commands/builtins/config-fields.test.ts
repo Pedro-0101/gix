@@ -6,6 +6,7 @@ import { CONFIG_FIELDS, KEY_OPTIONS, fieldChoices, findField } from './config-fi
 const CONFIG_KEYS = [
   'theme', 'language', 'open_key', 'open_interval_ms', 'close_key',
   'close_interval_ms', 'model', 'api_key', 'system_prompt', 'opacity',
+  'note_char_limit',
 ]
 
 describe('CONFIG_FIELDS', () => {

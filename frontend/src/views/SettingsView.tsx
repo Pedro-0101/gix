@@ -122,6 +122,17 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
           />
         </Row>
 
+        <Row label={tr(lang, 'note_char_limit')} i={9}>
+          <Slider
+            ariaLabel={tr(lang, 'note_char_limit')}
+            value={cfg.note_char_limit ?? 8000}
+            min={1000}
+            max={50000}
+            step={1000}
+            onChange={(v) => set('note_char_limit', v)}
+          />
+        </Row>
+
         <motion.label
           initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}

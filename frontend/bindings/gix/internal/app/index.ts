@@ -23,6 +23,7 @@ export type {
     GraphData,
     GraphEdge,
     GraphNode,
+    OverflowProposal,
     SearchResult,
     SummarizeResult,
     TidyResult

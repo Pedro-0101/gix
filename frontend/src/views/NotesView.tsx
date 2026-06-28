@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
-import { AlertsService, NotesService } from '../../bindings/gix/internal/app'
+import { AlertsService, ConfigService, NotesService } from '../../bindings/gix/internal/app'
 import type { Note } from '../../bindings/gix/internal/db'
 import { Markdown } from '../components/Markdown'
 import { Button } from '../components/Button'
 import { UndoToast } from '../components/UndoToast'
 import { NoteEditor } from './NoteEditor'
+import { NoteList } from './NoteList'
 import { moveSelection } from '../commands/interaction'
 import { createDeferredDelete, type DeferredDelete } from '../lib/deferredDelete'
 import { useNoteRewrite } from '../lib/useNoteRewrite'
@@ -27,7 +27,16 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
   // alert for the selected note.
   const [alertFor, setAlertFor] = useState<number | null>(null)
   const [whenText, setWhenText] = useState('')
+  // Global default note size limit, shown in the editor's counter when a note has
+  // no per-note override.
+  const [defaultLimit, setDefaultLimit] = useState(8000)
   const activeRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    ConfigService.Get().then((c: any) => {
+      if (c?.note_char_limit) setDefaultLimit(c.note_char_limit)
+    })
+  }, [])
 
   useEffect(() => {
     NotesService.List().then((n) => {
@@ -92,8 +101,10 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
 
   const active = notes.find((n) => n.ID === activeId)
 
-  const handleSave = async (title: string, content: string, tags: string[]) => {
+  const handleSave = async (title: string, content: string, tags: string[], charLimit: number) => {
     if (editingId === null) return
+    // Persist the override first so the re-fetched note carries the new limit.
+    await NotesService.SetCharLimit(editingId, charLimit)
     const updated = await NotesService.Update(editingId, title, content, tags)
     setNotes((list) => list.map((n) => (n.ID === updated.ID ? updated : n)))
     setActiveId(updated.ID)
@@ -146,6 +157,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
       <NoteEditor
         lang={lang}
         note={active}
+        defaultCharLimit={defaultLimit}
         onSave={handleSave}
         onCancel={() => setEditingId(null)}
       />
@@ -154,46 +166,14 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
 
   return (
     <div className="relative flex h-full font-mono text-fg">
-      <div className="flex w-2/5 flex-col border-r border-fg/8">
-        <div className="shrink-0 p-2">
-          <Button variant="ghost" onClick={onClose} className="gap-1">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-              strokeLinecap="round" strokeLinejoin="round" className="size-4">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            {tr(lang, 'cancel')}
-          </Button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {notes.length === 0 && (
-            <div className="px-1 py-3 text-sm text-muted">{tr(lang, 'notes_empty')}</div>
-          )}
-          <div className="space-y-0.5">
-            {notes.map((n, i) => {
-              const isActive = activeId === n.ID
-              return (
-                <motion.div
-                  key={n.ID}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(i * 0.03, 0.2) }}
-                  className={`rounded-field transition-colors duration-150 ${
-                    isActive ? 'bg-surface shadow-[var(--shadow-border)]' : 'hover:bg-surface/60'
-                  }`}
-                >
-                  <button
-                    ref={isActive ? activeRef : undefined}
-                    onClick={() => setActiveId(n.ID)}
-                    className="block w-full cursor-pointer truncate px-2.5 py-2 text-left text-sm outline-none"
-                  >
-                    {n.Title}
-                  </button>
-                </motion.div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
+      <NoteList
+        lang={lang}
+        notes={notes}
+        activeId={activeId}
+        setActiveId={setActiveId}
+        activeRef={activeRef}
+        onClose={onClose}
+      />
       <div className="flex min-h-0 flex-1 flex-col">
         {active && (
           <>

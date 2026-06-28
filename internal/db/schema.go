@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -23,6 +24,7 @@ func Open(path string) (*Database, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
+			char_limit INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS note_tags (
@@ -73,5 +75,22 @@ func Open(path string) (*Database, error) {
 		}
 	}
 
+	// Migrations for databases created before a column existed: CREATE TABLE IF
+	// NOT EXISTS above won't add columns to an already-present table.
+	if err := ensureColumn(db, "notes", "char_limit", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return nil, err
+	}
+
 	return &Database{db: db}, nil
+}
+
+// ensureColumn adds column to table with the given type/default if it isn't
+// already there, making the additive migration idempotent. SQLite has no
+// "ADD COLUMN IF NOT EXISTS", so a duplicate-column error is treated as success.
+func ensureColumn(db *sql.DB, table, column, decl string) error {
+	_, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + decl)
+	if err != nil && strings.Contains(err.Error(), "duplicate column name") {
+		return nil
+	}
+	return err
 }

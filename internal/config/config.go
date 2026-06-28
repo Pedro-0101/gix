@@ -68,20 +68,26 @@ type Config struct {
 	// Opacity is the background opacity of the palette shell, 0–100 (percent).
 	// Higher is more opaque; the remainder lets the acrylic backdrop show through.
 	Opacity int `json:"opacity"`
+	// NoteCharLimit is the global default size ceiling for a single note, in
+	// characters (runes). When a capture append would push a note past it, the
+	// user is asked how to handle the overflow. A per-note override lives in the
+	// notes table (0 there = inherit this default).
+	NoteCharLimit int `json:"note_char_limit"`
 }
 
 func Default() *Config {
 	return &Config{
-		Theme:                "light",
-		Language:             "pt",
-		OpenKey:              "Space",
-		OpenIntervalMs:       500,
-		CloseKey:             "Escape",
-		CloseIntervalMs:      500,
-		Model:                DefaultModel,
-		APIKey:               "",
-		SystemPrompt:         "Responda de forma direta e objetiva. Mantenha as respostas concisas e vá direto ao ponto.",
-		Opacity:              85,
+		Theme:           "light",
+		Language:        "pt",
+		OpenKey:         "Space",
+		OpenIntervalMs:  500,
+		CloseKey:        "Escape",
+		CloseIntervalMs: 500,
+		Model:           DefaultModel,
+		APIKey:          "",
+		SystemPrompt:    "Responda de forma direta e objetiva. Mantenha as respostas concisas e vá direto ao ponto.",
+		Opacity:         85,
+		NoteCharLimit:   8000,
 	}
 }
 
@@ -144,6 +150,9 @@ func Load() *Config {
 	}
 	if loaded.Opacity > 100 {
 		loaded.Opacity = 100
+	}
+	if loaded.NoteCharLimit <= 0 {
+		loaded.NoteCharLimit = cfg.NoteCharLimit
 	}
 	// APIKey vazio é válido: cai para a variável de ambiente em ResolveAPIKey.
 	return &loaded

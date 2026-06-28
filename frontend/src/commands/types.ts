@@ -42,6 +42,14 @@ export interface AskResult {
   message: string
 }
 
+// Result of summarizing one note (Go app.SummarizeResult). The summary is
+// returned only; the caller applies it via notes.update so the change is undoable.
+export interface SummarizeResult {
+  status: string
+  summary: string
+  message: string
+}
+
 // The state driving the search view, set via CommandContext.openSearch. While
 // `loading` is true the view shows a spinner; for mode 'ask' the summary panel
 // renders once the answer arrives.
@@ -93,6 +101,12 @@ export interface CommandContext {
     capture(text: string): Promise<CaptureResult>
     find(query: string): Promise<SearchHit[]>
     ask(query: string): Promise<AskResult>
+    // Summarize one note with the AI (no change applied); the caller persists the
+    // result via update.
+    summarize(id: number): Promise<SummarizeResult>
+    // Replace a note's title/content/tags exactly as given (no AI). Used to apply
+    // a summary and to undo it.
+    update(id: number, title: string, content: string, tags: string[]): Promise<void>
   }
   // Opens the search view with the given state (loading, then results).
   openSearch(state: SearchState): void

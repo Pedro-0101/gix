@@ -31,7 +31,7 @@ describe('promptHistory', () => {
   })
 
   it('walks backward through entries with prev, stashing the draft', () => {
-    let h = record(record(emptyHistory(), 'a'), 'b')
+    const h = record(record(emptyHistory(), 'a'), 'b')
     let r = prev(h, 'draft')
     expect(r.handled).toBe(true)
     expect(r.value).toBe('b')
@@ -50,7 +50,7 @@ describe('promptHistory', () => {
   })
 
   it('walks forward with next and restores the draft past the newest', () => {
-    let h = record(record(emptyHistory(), 'a'), 'b')
+    const h = record(record(emptyHistory(), 'a'), 'b')
     let up = prev(h, 'draft') // -> 'b'
     up = prev(up.history, 'b') // -> 'a'
     let down = next(up.history) // -> 'b'
@@ -66,7 +66,7 @@ describe('promptHistory', () => {
   })
 
   it('detach ends browsing so prev restarts from the newest', () => {
-    let h = record(record(emptyHistory(), 'a'), 'b')
+    const h = record(record(emptyHistory(), 'a'), 'b')
     const up = prev(h, '') // index at 'b'
     const d = detach(up.history)
     expect(d.index).toBeNull()

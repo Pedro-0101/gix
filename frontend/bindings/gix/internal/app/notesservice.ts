@@ -60,6 +60,15 @@ export function List(): $CancellablePromise<db$0.Note[] | null> {
 }
 
 /**
+ * Summarize asks the AI to condense one note into a shorter Markdown summary. It
+ * does not modify the note; the frontend applies the result via Update (so the
+ * change is undoable) when the user confirms.
+ */
+export function Summarize(id: number): $CancellablePromise<$models.SummarizeResult> {
+    return $Call.ByID(4276641010, id);
+}
+
+/**
  * Update replaces a note's title, content and tags exactly as the user typed
  * them — no AI, no cost. The text is re-embedded locally (free) when the model
  * is loaded so semantic search stays in sync; otherwise the note keeps no vector

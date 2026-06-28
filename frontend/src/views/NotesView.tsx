@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion } from 'motion/react'
 import { AlertsService, NotesService } from '../../bindings/gix/internal/app'
 import type { Note } from '../../bindings/gix/internal/db'
 import { Markdown } from '../components/Markdown'
 import { Button } from '../components/Button'
+import { UndoToast } from '../components/UndoToast'
 import { NoteEditor } from './NoteEditor'
 import { moveSelection } from '../commands/interaction'
 import { createDeferredDelete, type DeferredDelete } from '../lib/deferredDelete'
@@ -25,6 +26,11 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
   // alert for the selected note.
   const [alertFor, setAlertFor] = useState<number | null>(null)
   const [whenText, setWhenText] = useState('')
+  // True while a summary is being generated (disables the button).
+  const [summarizing, setSummarizing] = useState(false)
+  // The note as it was *before* a summary replaced its body, kept so the toast
+  // can restore it. Cleared after the grace period.
+  const [pendingSummary, setPendingSummary] = useState<{ note: Note } | null>(null)
   const activeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -118,6 +124,38 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
     setAlertFor(null); setWhenText('')
   }
 
+  // Auto-dismiss timer for the summary undo toast.
+  const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (summaryTimer.current) clearTimeout(summaryTimer.current) }, [])
+
+  // Summarize the note with the AI and replace its body with the summary,
+  // keeping the original around so the toast can undo it.
+  const handleSummarize = async (note: Note) => {
+    setSummarizing(true)
+    try {
+      const res = await NotesService.Summarize(note.ID)
+      if (res.status !== 'ok' || !res.summary) return
+      const updated = await NotesService.Update(note.ID, note.Title, res.summary, note.Tags ?? [])
+      setNotes((list) => list.map((n) => (n.ID === updated.ID ? updated : n)))
+      setActiveId(updated.ID)
+      setPendingSummary({ note })
+      if (summaryTimer.current) clearTimeout(summaryTimer.current)
+      summaryTimer.current = setTimeout(() => setPendingSummary(null), DELETE_GRACE_MS)
+    } finally {
+      setSummarizing(false)
+    }
+  }
+
+  const handleUndoSummary = async () => {
+    if (!pendingSummary) return
+    const { note } = pendingSummary
+    const restored = await NotesService.Update(note.ID, note.Title, note.Content, note.Tags ?? [])
+    setNotes((list) => list.map((n) => (n.ID === restored.ID ? restored : n)))
+    setActiveId(restored.ID)
+    setPendingSummary(null)
+    if (summaryTimer.current) clearTimeout(summaryTimer.current)
+  }
+
   const handleUndo = () => {
     if (!pendingDelete) return
     const { note, index } = pendingDelete
@@ -195,6 +233,13 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
                 </svg>
                 {tr(lang, 'alert_from_note')}
               </Button>
+              <Button variant="ghost" disabled={summarizing} onClick={() => handleSummarize(active)} className="gap-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round" className="size-4">
+                  <path d="M4 6h16M4 12h16M4 18h10" />
+                </svg>
+                {tr(lang, 'summarize')}
+              </Button>
               <Button variant="ghost" onClick={() => setEditingId(active.ID)} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round" className="size-4">
@@ -234,28 +279,20 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
         )}
       </div>
 
-      <AnimatePresence>
-        {pendingDelete && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 12 }}
-            transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-            className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-field bg-surface px-3 py-2 text-sm shadow-[var(--shadow-border)]"
-          >
-            <span className="text-muted">
-              {tr(lang, 'note_deleted')}
-              <span className="ml-1 text-fg">{pendingDelete.note.Title}</span>
-            </span>
-            <button
-              onClick={handleUndo}
-              className="cursor-pointer font-medium text-accent outline-none hover:brightness-110"
-            >
-              {tr(lang, 'undo')}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <UndoToast
+        open={!!pendingDelete}
+        message={tr(lang, 'note_deleted')}
+        title={pendingDelete?.note.Title ?? ''}
+        undoLabel={tr(lang, 'undo')}
+        onUndo={handleUndo}
+      />
+      <UndoToast
+        open={!!pendingSummary}
+        message={tr(lang, 'note_summarized')}
+        title={pendingSummary?.note.Title ?? ''}
+        undoLabel={tr(lang, 'undo')}
+        onUndo={handleUndoSummary}
+      />
     </div>
   )
 }

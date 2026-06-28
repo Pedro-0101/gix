@@ -228,6 +228,61 @@ func TestAskEmptyWhenNoNotes(t *testing.T) {
 	}
 }
 
+func TestSummarizeReturnsSummary(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Reunião", "discutimos prazos, orçamento e a contratação do novo time", "reunião")
+	fake := &fakeCompleter{responses: []string{"- prazos\n- orçamento\n- contratação"}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Summarize(id)
+	if err != nil {
+		t.Fatalf("Summarize: %v", err)
+	}
+	if res.Status != "ok" || !strings.Contains(res.Summary, "prazos") {
+		t.Fatalf("unexpected summarize result: %+v", res)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("Summarize should call the AI exactly once, called %d", fake.calls)
+	}
+}
+
+func TestSummarizeNoAPIKey(t *testing.T) {
+	d := notesTestDB(t)
+	id := addNote(t, d, "Nota", "algum conteúdo", "tag")
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+	fake := &fakeCompleter{responses: []string{"should not be called"}}
+	svc := NewNotesService(NewConfigService(), d, func(string) Completer { return fake })
+
+	res, err := svc.Summarize(id)
+	if err != nil {
+		t.Fatalf("Summarize: %v", err)
+	}
+	if res.Status != "no_api_key" {
+		t.Fatalf("expected no_api_key, got %+v", res)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Summarize must not call the AI without an API key")
+	}
+}
+
+func TestSummarizeMissingNote(t *testing.T) {
+	d := notesTestDB(t)
+	fake := &fakeCompleter{responses: []string{"nope"}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Summarize(999)
+	if err != nil {
+		t.Fatalf("Summarize: %v", err)
+	}
+	if res.Status != "error" {
+		t.Fatalf("expected error for missing note, got %+v", res)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("Summarize must not call the AI for a missing note")
+	}
+}
+
 func TestFindDoesNotCallAI(t *testing.T) {
 	d := notesTestDB(t)
 	addNote(t, d, "Carro", "motor do carro", "carro")

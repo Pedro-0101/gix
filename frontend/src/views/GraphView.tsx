@@ -1,50 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  forceSimulation,
-  forceLink,
-  forceManyBody,
-  forceCenter,
-  forceCollide,
-  type Simulation,
-  type SimulationNodeDatum,
-} from 'd3-force'
+import { forceCenter, type Simulation } from 'd3-force'
 import { NotesService } from '../../bindings/gix/internal/app'
-import type { GraphNode, GraphEdge } from '../../bindings/gix/internal/app'
-
-interface SimNode extends SimulationNodeDatum {
-  id: number
-  title: string
-  tags: string[]
-  radius: number
-  linkCount: number
-}
-
-interface SimLink {
-  source: SimNode
-  target: SimNode
-}
-
-const TAG_COLORS = ['#a78bfa', '#60a5fa', '#34d399', '#f472b6', '#fbbf24', '#fb923c', '#818cf8', '#2dd4bf']
-
-const THEME_TEXT: Record<string, string> = {
-  dark: 'rgba(255,255,255,0.75)',
-  light: 'rgba(0,0,0,0.7)',
-}
-
-const THEME_TEXT_HOVER: Record<string, string> = {
-  dark: '#fff',
-  light: '#000',
-}
-
-const THEME_EDGE: Record<string, string> = {
-  dark: 'rgba(255,255,255,0.12)',
-  light: 'rgba(0,0,0,0.12)',
-}
-
-const THEME_EDGE_HOVER: Record<string, string> = {
-  dark: 'rgba(255,255,255,0.5)',
-  light: 'rgba(0,0,0,0.35)',
-}
+import { buildSimulation, makeStars, type GraphData } from './graph/simulation'
+import { drawGraph } from './graph/render'
+import type { SimLink, SimNode, Star } from './graph/types'
 
 export function GraphView({
   lang,
@@ -60,7 +19,7 @@ export function GraphView({
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null)
   const nodesRef = useRef<SimNode[]>([])
   const linksRef = useRef<SimLink[]>([])
-  const bgStarsRef = useRef<{ x: number; y: number; r: number; a: number }[]>([])
+  const bgStarsRef = useRef<Star[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<number | null>(null)
@@ -71,6 +30,21 @@ export function GraphView({
   const rafRef = useRef(0)
   const themeRef = useRef(document.documentElement.dataset.theme || 'dark')
 
+  // Thin wrapper: feeds the live refs + current hover into the pure renderer.
+  const draw = () => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    drawGraph(canvas, container, {
+      nodes: nodesRef.current,
+      links: linksRef.current,
+      transform: transformRef.current,
+      theme: themeRef.current,
+      hoveredId,
+      bgStars: bgStarsRef.current,
+    })
+  }
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -78,52 +52,19 @@ export function GraphView({
 
     NotesService.GetGraphData().then((data) => {
       if (cancelled) return
-      const gd = data as unknown as { nodes: GraphNode[]; edges: GraphEdge[] }
+      const gd = data as unknown as GraphData
       if (!gd || !gd.nodes || gd.nodes.length === 0) {
         setLoading(false)
         return
       }
-
-      const edgeCount = new Map<number, number>()
-      gd.edges.forEach((e) => {
-        edgeCount.set(e.source, (edgeCount.get(e.source) || 0) + 1)
-        edgeCount.set(e.target, (edgeCount.get(e.target) || 0) + 1)
-      })
-
-      const simNodes: SimNode[] = gd.nodes.map((n) => ({
-        id: n.id,
-        title: n.title,
-        tags: n.tags ?? [],
-        radius: 5 + Math.min((edgeCount.get(n.id) || 0) * 1.5, 6),
-        linkCount: edgeCount.get(n.id) || 0,
-      }))
-
-      const nodeMap = new Map(simNodes.map((n) => [n.id, n]))
-      const simLinks: SimLink[] = gd.edges
-        .filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target))
-        .map((e) => ({ source: nodeMap.get(e.source)!, target: nodeMap.get(e.target)! }))
-
-      nodesRef.current = simNodes
-      linksRef.current = simLinks
-
       const container = containerRef.current
       const cx = container ? container.clientWidth / 2 : 300
       const cy = container ? container.clientHeight / 2 : 200
 
-      simNodes.forEach((n) => {
-        n.x = cx + (Math.random() - 0.5) * Math.max(cx, cy) * 0.8
-        n.y = cy + (Math.random() - 0.5) * Math.max(cx, cy) * 0.8
-      })
-
-      const sim = forceSimulation(simNodes)
-        .force('link', forceLink<SimNode, SimLink>(simLinks).distance(100).strength(0.4))
-        .force('charge', forceManyBody().strength(-250))
-        .force('center', forceCenter(cx, cy))
-        .force('collide', forceCollide((n) => n.radius + 6))
-        .alphaDecay(0.02)
-        .velocityDecay(0.3)
-        .on('tick', () => { if (!cancelled) draw() })
-
+      const { nodes, links, sim } = buildSimulation(gd, cx, cy)
+      nodesRef.current = nodes
+      linksRef.current = links
+      sim.on('tick', () => { if (!cancelled) draw() })
       sim.alpha(1).restart()
       simRef.current = sim
       setLoading(false)
@@ -134,26 +75,14 @@ export function GraphView({
     return () => { cancelled = true; simRef.current?.stop() }
   }, [])
 
-  // Generate background stars
+  // Background stars.
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const w = container.clientWidth
-    const h = container.clientHeight
-    const stars: { x: number; y: number; r: number; a: number }[] = []
-    const count = Math.floor((w * h) / 8000)
-    for (let i = 0; i < count; i++) {
-      stars.push({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        r: Math.random() * 1.2 + 0.3,
-        a: Math.random() * 0.4 + 0.1,
-      })
-    }
-    bgStarsRef.current = stars
+    bgStarsRef.current = makeStars(container.clientWidth, container.clientHeight)
   }, [])
 
-  // Resize handler
+  // Resize handler.
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -169,7 +98,7 @@ export function GraphView({
     return () => ro.disconnect()
   }, [])
 
-  // Non-passive wheel listener
+  // Non-passive wheel listener (zoom toward the cursor).
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -191,123 +120,6 @@ export function GraphView({
     canvas.addEventListener('wheel', handler, { passive: false })
     return () => canvas.removeEventListener('wheel', handler)
   }, [])
-
-  const draw = () => {
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-    const w = container.clientWidth
-    const h = container.clientHeight
-    const dpr = window.devicePixelRatio || 1
-
-    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-      canvas.width = w * dpr
-      canvas.height = h * dpr
-      canvas.style.width = w + 'px'
-      canvas.style.height = h + 'px'
-    }
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, w, h)
-
-    const theme = themeRef.current
-    const t = transformRef.current
-
-    // Draw background stars (only when not zoomed in too much)
-    if (t.scale < 1.5) {
-      bgStarsRef.current.forEach((star) => {
-        ctx.fillStyle = `rgba(255,255,255,${star.a})`
-        ctx.beginPath()
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2)
-        ctx.fill()
-      })
-    }
-
-    ctx.translate(t.x, t.y)
-    ctx.scale(t.scale, t.scale)
-
-    const nodes = nodesRef.current
-    const links = linksRef.current
-    const hovered = hoveredId
-
-    // Draw edges
-    ctx.lineWidth = 1
-    links.forEach((l) => {
-      const s = l.source as SimNode
-      const tgt = l.target as SimNode
-      const isH = hovered !== null && (s.id === hovered || tgt.id === hovered)
-      if (isH) {
-        ctx.strokeStyle = THEME_EDGE_HOVER[theme]
-        ctx.lineWidth = 1.5
-      } else {
-        ctx.strokeStyle = THEME_EDGE[theme]
-        ctx.lineWidth = 0.8
-      }
-      ctx.beginPath()
-      ctx.moveTo(s.x!, s.y!)
-      ctx.lineTo(tgt.x!, tgt.y!)
-      ctx.stroke()
-    })
-    ctx.lineWidth = 1
-
-    // Draw nodes
-    nodes.forEach((n) => {
-      const isH = n.id === hovered
-      const cx = n.x!
-      const cy = n.y!
-      const r = isH ? n.radius + 3 : n.radius
-
-      // Glow on hover
-      if (isH) {
-        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 4)
-        g.addColorStop(0, 'rgba(167,139,250,0.25)')
-        g.addColorStop(1, 'rgba(167,139,250,0)')
-        ctx.fillStyle = g
-        ctx.beginPath()
-        ctx.arc(cx, cy, r * 4, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // Node circle
-      const tagIdx = n.tags.length > 0
-        ? Math.abs(hashStr(n.tags[0])) % TAG_COLORS.length
-        : n.id % TAG_COLORS.length
-      ctx.fillStyle = TAG_COLORS[tagIdx]
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Inner highlight
-      ctx.fillStyle = theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.7)'
-      ctx.beginPath()
-      ctx.arc(cx - r * 0.2, cy - r * 0.2, r * 0.3, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Label
-      if (isH || t.scale > 0.7) {
-        ctx.fillStyle = isH ? THEME_TEXT_HOVER[theme] : THEME_TEXT[theme]
-        ctx.font = isH ? 'bold 11px system-ui, sans-serif' : '10px system-ui, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'top'
-        const label = n.title.length > 22 ? n.title.slice(0, 22) + '…' : n.title
-        const labelY = cy + r + 4
-        // Background pill for readability
-        const metrics = ctx.measureText(label)
-        const pw = metrics.width + 10
-        const ph = 16
-        ctx.fillStyle = theme === 'dark' ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)'
-        const rx = cx - pw / 2
-        const ry = labelY - 2
-        ctx.beginPath()
-        ctx.roundRect(rx, ry, pw, ph, 4)
-        ctx.fill()
-        ctx.fillStyle = isH ? THEME_TEXT_HOVER[theme] : THEME_TEXT[theme]
-        ctx.fillText(label, cx, labelY)
-      }
-    })
-  }
 
   const getCanvasPos = (e: React.MouseEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect()
@@ -442,13 +254,4 @@ export function GraphView({
       </div>
     </div>
   )
-}
-
-function hashStr(s: string): number {
-  let hash = 0
-  for (let i = 0; i < s.length; i++) {
-    hash = ((hash << 5) - hash) + s.charCodeAt(i)
-    hash |= 0
-  }
-  return hash
 }

@@ -22,5 +22,6 @@ export type {
     GraphData,
     GraphEdge,
     GraphNode,
-    SearchResult
+    SearchResult,
+    SummarizeResult
 } from "./models.js";

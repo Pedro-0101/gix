@@ -96,3 +96,21 @@ export interface SearchResult {
     "tags": string[] | null;
     "score": number;
 }
+
+/**
+ * SummarizeResult is the AI summary of a single note. The summary is returned
+ * only; applying it (replacing the note body) is done by the caller via Update,
+ * which keeps undo symmetric across the command and the notes-view button.
+ * 
+ * 	"ok"         summary produced
+ * 	"no_api_key" the API key is missing
+ * 	"empty"      the note has no content to summarize
+ * 	"error"      failure (see Message)
+ */
+export interface SummarizeResult {
+    "status": string;
+    "summary": string;
+    "message": string;
+    "tokens": number;
+    "cost": number;
+}

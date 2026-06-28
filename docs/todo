@@ -11,9 +11,7 @@ features
 notas (core business) - v1 do /note feita; futuro:
 - Afinar o roteamento: melhorar a decisão de anexar vs criar e a geração de títulos
 - Configurar limite de linhas e modo de integração por nota (hoje só default global)
-- IA lê, analisa e reorganiza ou resume uma nota sob demanda (ex: /tidy)
-- Lembretes de verdade (data due_at estruturada + notificação/agendamento, junto das interações com o SO)
-- Fazer um visualizador de arvode, estilo obsidian
+- IA reorganiza uma nota sob demanda (ex: /tidy) — resumir já feito
 
 feito
 - Links em markdown abrem no navegador (Browser.OpenURL via Wails runtime)
@@ -22,6 +20,9 @@ feito
 - Busca híbrida (/find, FTS5 + embeddings) e Q&A sobre as notas (/ask, IA resume)
 - Editar notas manualmente (tela de edição: título, corpo, tags) e excluir com desfazer (undo)
 - Mecanica para letras e palavras aparecerem aos poucos suavemente de forma continua (reveal)
+- Resumir nota com IA (/resumir + botão na tela de notas): substitui o conteúdo com desfazer
+- Lembretes de verdade: alertas com due_at estruturado, recorrência, notificações nativas (snooze/concluir) e scheduler com polling
+- Visualizador de árvore estilo obsidian (/graph, constelação por tags compartilhadas)
 
 
 fixes

@@ -8,6 +8,7 @@ import { notesCommand } from './builtins/notes'
 import { findCommand } from './builtins/find'
 import { askCommand } from './builtins/ask'
 import { alertCommand } from './builtins/alert'
+import { summarizeCommand } from './builtins/summarize'
 import { graphCommand } from './builtins/graph'
 
 // The single source of truth. New commands — including future user-defined ones —
@@ -19,6 +20,7 @@ export const commands: Command[] = [
   notesCommand,
   findCommand,
   askCommand,
+  summarizeCommand,
   alertCommand,
   configCommand,
   historyCommand,

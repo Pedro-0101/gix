@@ -3,6 +3,8 @@
 
 /**
  * AlertsService creates reminders (AI-parsed) and fires them on a polling loop.
+ * Creation/parsing lives in alerts_create.go; the polling loop and toast
+ * dispatch in alerts_scheduler.go; recurrence rules in recurrence.go.
  * @module
  */
 

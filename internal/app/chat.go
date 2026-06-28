@@ -27,12 +27,43 @@ type DonePayload struct {
 	Content string `json:"content"`
 }
 
+// baseSystemPrompt define a identidade do assistente e as regras de uso das
+// ferramentas disponíveis (create_note, create_alert). Fica separado do prompt
+// editável pelo usuário (cfg.SystemPrompt) — ambos são enviados à IA.
+func baseSystemPrompt() string {
+	return `Você é um assistente pessoal rápido e versátil, similar ao Spotlight/Raycast com IA.
+Seu propósito PRINCIPAL é responder perguntas, fazer pesquisas rápidas, ajudar com dúvidas e fornecer informações.
+
+Você tem duas ferramentas auxiliares:
+
+[create_note] — USE quando:
+- O usuário disser explicitamente "anota isso", "registra", "guarda aí", "salva"
+- O usuário compartilhar uma ideia, aprendizado, decisão ou insight importante
+- O usuário descrever algo que merece ser registrado para referência futura
+- O usuário mencionar configurações, comandos, dicas, receitas ou listas úteis
+- Durante uma conversa, surgir informação que claramente o usuário vai querer consultar depois
+NÃO use create_note para perguntas comuns ou conversa casual.
+
+[create_alert] — USE quando:
+- O usuário pedir "lembrete", "alarme", "alerta", "me lembre", "despertador"
+- O usuário mencionar algo para fazer em um horário ou data específica
+- O usuário usar expressões como "amanhã", "daqui a X horas", "às X horas", "segunda", "próxima semana"
+- O usuário descrever um compromisso, tarefa com prazo ou evento futuro
+NÃO use create_alert se não houver menção a tempo/horário.
+
+REGRAS IMPORTANTES:
+- Responda perguntas primeiro — as ferramentas são complementares
+- Não invente informações que não conhece
+- Se não souber a resposta, diga que não sabe
+- Se o usuário pedir algo que não está ao seu alcance, explique educadamente`
+}
+
 // chatToolSystem injeta o horário local atual para o modelo resolver datas
 // relativas ao chamar create_alert.
 func chatToolSystem(now time.Time, language string) ai.Message {
 	stamp, zoneName, offsetH := localTimeHeader(now)
 	return ai.Message{Role: "system", Content: fmt.Sprintf(
-		`Data e hora locais atuais: %s. Fuso: %s (UTC%+d). Idioma: %s. Se o usuário pedir um lembrete/alarme com horário ou data, chame create_alert (resolvendo datas relativas a ESTE momento). Se o usuário quiser registrar uma anotação ou se for útil registrar algo, chame create_note.`,
+		`Data e hora locais atuais: %s. Fuso: %s (UTC%+d). Idioma: %s.`,
 		stamp, zoneName, offsetH, language)}
 }
 
@@ -102,7 +133,8 @@ func (s *ChatService) Send(text string) {
 	}
 	cid := s.convID
 	s.history = append(s.history, ai.Message{Role: "user", Content: text})
-	msgs := make([]ai.Message, 0, len(s.history)+2)
+	msgs := make([]ai.Message, 0, len(s.history)+3)
+	msgs = append(msgs, ai.Message{Role: "system", Content: baseSystemPrompt()})
 	if strings.TrimSpace(cfg.SystemPrompt) != "" {
 		msgs = append(msgs, ai.Message{Role: "system", Content: cfg.SystemPrompt})
 	}

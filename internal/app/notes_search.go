@@ -33,21 +33,17 @@ func (s *NotesService) Find(query string) ([]SearchResult, error) {
 		return nil, nil
 	}
 
-	ftsHits, err := s.db.SearchFTS(query, candidateLimit)
-	if err != nil {
-		return nil, err
-	}
-	ftsOrder := make([]int64, len(ftsHits))
-	for i, h := range ftsHits {
-		ftsOrder[i] = h.NoteID
-	}
-
-	vecOrder, err := s.vectorSearch(query)
-	if err != nil {
-		return nil, err
+	sources := s.rankSources()
+	rankings := make([][]int64, 0, len(sources))
+	for _, src := range sources {
+		order, err := src.Rank(query)
+		if err != nil {
+			return nil, err
+		}
+		rankings = append(rankings, order)
 	}
 
-	fused := rrf([][]int64{ftsOrder, vecOrder}, rrfK)
+	fused := rrf(rankings, rrfK)
 	if len(fused) == 0 {
 		return nil, nil
 	}
@@ -83,9 +79,54 @@ func (s *NotesService) Find(query string) ([]SearchResult, error) {
 	return results, nil
 }
 
-// vectorSearch embeds the query and ranks all stored note vectors by cosine.
-// Returns note ids best-first, or nil when the embedder isn't ready yet.
-func (s *NotesService) vectorSearch(query string) ([]int64, error) {
+// RankSource produces note ids for a query, best-first. Find fuses every source
+// via RRF, so a new ranking signal (recency, tag boost, a cross-encoder rerank)
+// is added as another source in rankSources — Find itself never changes.
+// Full-text and vector are the two built-in sources today.
+type RankSource interface {
+	Rank(query string) ([]int64, error)
+}
+
+// rankFunc adapts a plain ranking method to a RankSource.
+type rankFunc func(query string) ([]int64, error)
+
+func (f rankFunc) Rank(query string) ([]int64, error) { return f(query) }
+
+// rankSources is the ordered set of sources Find fuses. Append here to add a
+// signal; order is irrelevant (RRF is symmetric across lists).
+func (s *NotesService) rankSources() []RankSource {
+	return []RankSource{
+		rankFunc(s.ftsRank),
+		rankFunc(s.vectorSearch),
+	}
+}
+
+// ftsRank ranks note ids by SQLite full-text relevance, best-first.
+func (s *NotesService) ftsRank(query string) ([]int64, error) {
+	hits, err := s.db.SearchFTS(query, candidateLimit)
+	if err != nil {
+		return nil, err
+	}
+	order := make([]int64, len(hits))
+	for i, h := range hits {
+		order[i] = h.NoteID
+	}
+	return order, nil
+}
+
+// scoredNote is a note id with its cosine similarity to the query. Plain search
+// needs only the order, but the attach router thresholds on the score, so
+// rankByVector keeps both and the callers project what they need.
+type scoredNote struct {
+	id  int64
+	sim float64
+}
+
+// rankByVector embeds the query and scores every stored note vector by cosine,
+// best-first, with no count cap (callers cap). Drops non-positive similarities
+// (orthogonal/opposite carry no semantic signal) and returns nil when the
+// embedder isn't ready yet, so search degrades to full-text only.
+func (s *NotesService) rankByVector(query string) ([]scoredNote, error) {
 	if s.embedder == nil {
 		return nil, nil
 	}
@@ -97,19 +138,25 @@ func (s *NotesService) vectorSearch(query string) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	type scored struct {
-		id  int64
-		sim float64
-	}
-	ranked := make([]scored, 0, len(vecs))
+	ranked := make([]scoredNote, 0, len(vecs))
 	for _, v := range vecs {
 		sim := embed.Cosine(qv, embed.DecodeVector(v.Vec))
-		if sim <= 0 { // orthogonal/opposite carries no semantic signal
+		if sim <= 0 {
 			continue
 		}
-		ranked = append(ranked, scored{id: v.NoteID, sim: sim})
+		ranked = append(ranked, scoredNote{id: v.NoteID, sim: sim})
 	}
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].sim > ranked[j].sim })
+	return ranked, nil
+}
+
+// vectorSearch ranks note ids by semantic similarity, best-first, capped at
+// candidateLimit. One of the RankSource fed to Find's fusion.
+func (s *NotesService) vectorSearch(query string) ([]int64, error) {
+	ranked, err := s.rankByVector(query)
+	if err != nil {
+		return nil, err
+	}
 	if len(ranked) > candidateLimit {
 		ranked = ranked[:candidateLimit]
 	}

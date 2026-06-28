@@ -54,6 +54,29 @@ func TestCaptureProposesAttachToSimilarNote(t *testing.T) {
 	}
 }
 
+func TestCaptureDoesNotAttachBelowSimilarityFloor(t *testing.T) {
+	d := notesTestDB(t)
+	// This note spans two themes (carro + mercado) → vector [1,1,0]. A single-theme
+	// capture ("carro" → [1,0,0]) has cosine 1/√2 ≈ 0.71, below attachMinSim, so the
+	// note is never offered as a candidate even though the model tries to attach.
+	addNote(t, d, "Mista", "fui ao mercado e o carro fez barulho", "geral")
+	fake := &fakeCompleter{responses: []string{
+		`{"title":"Oficina do carro","content":"levar o carro na oficina","tags":["carro"],"attach_to":1}`,
+	}}
+	svc := newNotesSvc(t, d, fake)
+
+	res, err := svc.Capture("preciso levar o carro na oficina por causa do motor")
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	if res.Status != "created" {
+		t.Fatalf("a candidate below the similarity floor must not be attached, got %+v", res)
+	}
+	if notes, _ := svc.List(); len(notes) != 2 {
+		t.Fatalf("expected a new note created, got %d", len(notes))
+	}
+}
+
 func TestCaptureIgnoresHallucinatedAttachId(t *testing.T) {
 	d := notesTestDB(t)
 	addNote(t, d, "Carro", "o motor do carro está com barulho", "carro")

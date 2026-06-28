@@ -181,7 +181,7 @@ func buildCapturePrompt(text string, now time.Time, cands []db.Note) []ai.Messag
 A data e hora atuais são: %s. Fuso: %s (UTC%+d).
 Resolva qualquer data relativa ("amanhã", "sexta") para uma data absoluta no texto.
 Formate "content" como Markdown bem estruturado (parágrafo, lista, tarefa "- [ ]", ou pequena seção) — preserve a informação do usuário, sem inventar nem remover.
-Gere um "title" curto (sem marcadores Markdown) e de 1 a 5 "tags" temáticas, minúsculas, sem "#".
+Gere um "title" curto e específico (3 a 6 palavras, sem marcadores Markdown nem ponto final) que nomeie o assunto concreto da nota — evite títulos genéricos como "Nota", "Lembrete" ou "Ideia". Gere de 1 a 5 "tags" temáticas, minúsculas, sem "#".
 Se o usuário pedir explicitamente para criar um alerta ou lembrete, extraia essa instrução para o campo "alert" — o conteúdo da nota deve conter apenas o restante do texto. Se não houver instrução explícita mas a nota descrever um lembrete com horário/data concretos, também inclua "alert". Caso contrário use "alert": null.%s
 Responda APENAS com JSON, sem cercas:
 {"title":"<título curto>","content":"<Markdown da nota>","tags":["tag1","tag2"],"attach_to":null,"alert":null ou {"message":"<lembrete curto>","fire_at":"<ISO 8601 com offset>","recurrence":null ou {"freq":"daily|weekly|monthly|yearly","interval":1,"weekday":"mon","time":"09:00"}}}`,

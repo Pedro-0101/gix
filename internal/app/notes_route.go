@@ -14,6 +14,15 @@ import (
 // enough to keep the prompt cheap.
 const maxCandidates = 5
 
+// attachMinSim is the cosine floor a stored note must clear to even be offered to
+// the capture router as an attach candidate. Tuned for multilingual-e5-small,
+// whose similarities run high and aren't zero-centered — unrelated notes already
+// sit around ~0.75, genuine same-topic continuations ~0.85+. The floor prunes the
+// obvious non-matches so the model only adjudicates plausible ones; below it,
+// capture just creates. This is the main knob for the attach precision/recall
+// trade-off: raise it to attach less eagerly, lower it to catch more merges.
+const attachMinSim = 0.82
+
 // AttachProposal points a capture at an existing note the model judged it
 // belongs to. Capture returns it (status "attach_proposed") instead of writing,
 // so the frontend can confirm before AppendTo runs.
@@ -23,19 +32,30 @@ type AttachProposal struct {
 }
 
 // candidateNotes returns the notes most semantically similar to text, best-first,
-// for the capture router. Purely semantic (vector) so an arbitrary note body
-// can't trip FTS query syntax; returns nil when the embedder isn't ready yet, in
-// which case capture always creates.
+// for the capture router — but only those clearing attachMinSim, so a weak match
+// never becomes an attach proposal. Purely semantic (vector) so an arbitrary note
+// body can't trip FTS query syntax; returns nil when the embedder isn't ready yet
+// or nothing clears the floor, in which case capture creates.
 func (s *NotesService) candidateNotes(text string) []db.Note {
 	if s.db == nil {
 		return nil
 	}
-	ids, err := s.vectorSearch(text)
-	if err != nil || len(ids) == 0 {
+	ranked, err := s.rankByVector(text)
+	if err != nil || len(ranked) == 0 {
 		return nil
 	}
-	if len(ids) > maxCandidates {
-		ids = ids[:maxCandidates]
+	ids := make([]int64, 0, maxCandidates)
+	for _, r := range ranked {
+		if r.sim < attachMinSim {
+			break // best-first, so every remaining note is below the floor too
+		}
+		ids = append(ids, r.id)
+		if len(ids) == maxCandidates {
+			break
+		}
+	}
+	if len(ids) == 0 {
+		return nil
 	}
 	notes, err := s.db.NotesByIDs(ids)
 	if err != nil {

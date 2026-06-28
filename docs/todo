@@ -16,7 +16,7 @@ notas (core business) - v1 do /note feita; futuro:
 - IA reorganiza uma nota sob demanda (ex: /tidy) — resumir já feito
 
 arquitetura (design patterns p/ expansão)
-- [ ] Tool registry no chat: cada ferramenta como interface (Schema + Handle), Send despacha pelo registry em vez do if create_alert inline (chat.go) — abre p/ create_note, search_notes, web_search sem inchar o laço de streaming
+- [x] Tool registry no chat: ferramentas como interface (ChatTool: Schema + Handle), Send despacha por toolRegistry.dispatch/schemas em vez de if-por-tool (chat_tools.go). create_alert e create_note já rodam sobre ele; falta só registrar search_notes/web_search como novas ChatTool quando virarem feature
 - [ ] Provider de IA pluggável de verdade: registry por provider/modelo (Anthropic direto, OpenAI direto, Ollama local) — o seam já está centralizado em provider.go (newProvider); falta o registro por config/modelo quando surgir o 2º provider
 - [ ] Recorrência via Strategy (mapa freq→advanceFunc) quando adicionar frequências novas (a cada N horas, dias úteis, "última sexta do mês") — recurrence.go (hoje switch com 4 casos estáveis, ainda honesto)
 - [ ] Busca: RankSource pluggável (interface Rank(query) []int64) p/ somar recência / boost de tag / rerank às fontes FTS+vetor — rrf já funde N listas, falta extrair as fontes (notes_search.go)

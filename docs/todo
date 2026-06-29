@@ -25,6 +25,53 @@ arquitetura (design patterns p/ expansão)
 - [x] Builder de prompt: cabeçalho de data/fuso/idioma centralizado (localTimeHeader em prompt.go) — removeu a duplicação de capture/alert/chat
 - [x] Provider de IA: construção centralizada em newProvider (provider.go), um único ponto em vez de ai.New repetido em 3 serviços
 
+backend único multi-canal (Railway) — backend vai p/ repo novo (gix-server)
+ideia: servidor concentra TODA a lógica (captura, vetorização, busca, IA, alertas) atrás de um
+core agnóstico de canal; desktop/WhatsApp/Telegram/Android são canais finos sobre a mesma API,
+com a mesma fonte de dados e a mesma resposta.
+decisões: multi-user (contas) · online-only sem DB/ONNX no cliente · IA via relay (chave no
+servidor) · vetorização+busca+lógica no servidor (pgvector) · scheduler central + push ·
+chat por SSE re-emitido em eventos Wails
+
+fase 0 — fundação & contrato (core agnóstico de canal)
+- [ ] Criar repo gix-server e mover p/ lá: internal/ai, queries de internal/db, internal/embed
+      (ONNX roda em Linux via purego, sem CGO) e a lógica de notas/alertas/busca/recorrência
+- [ ] Definir o core como intents de I/O simples (capture, find, ask, summarize, tidy,
+      create_alert, chat); adapters de canal por cima, sem lógica de negócio nos canais
+- [ ] Schema Postgres multi-user (user_id em tudo) + pgvector p/ note_vectors + FTS via tsvector
+
+fase 1 — backend Railway (auth + dados + busca/IA)
+- [ ] Servidor HTTP Go (chi/echo) + Postgres (pgx) + pgvector + migrações; portar queries do
+      internal/db escopadas por user_id
+- [ ] Auth: contas + login + JWT (access/refresh) + middleware de escopo por usuário
+- [ ] Embeddings server-side (e5-small via ONNX) + busca híbrida (tsvector/FTS + pgvector, RRF)
+- [ ] Relay de IA (chave no servidor); REST p/ todas as intents + SSE p/ chat (bots recebem
+      resposta completa, desktop recebe stream)
+- [ ] Deploy na Railway (Dockerfile, env: DATABASE_URL, JWT_SECRET, OPENROUTER_API_KEY)
+
+fase 2 — scheduler central + push
+- [ ] Scheduler server-side (alertas, recorrência, fuso por usuário) — dispara mesmo com o
+      desktop fechado
+- [ ] Canal de push de saída (WebSocket/SSE p/ desktop; por-canal p/ WhatsApp/Telegram depois);
+      no vencimento, push pro canal preferido do usuário
+
+fase 3 — desktop vira canal fino
+- [ ] Remover do gix: internal/db (SQLite), internal/embed (ONNX), internal/ai e os services de
+      dados; bindings de dados saem (some CGO/ONNX e o download de ~335MB)
+- [ ] React passa a chamar a API remota direto (fetch + SSE p/ chat); cliente de API + auth na
+      UI (login, token seguro via DPAPI/keychain)
+- [ ] Go fica só com nativo: hotkey, janela, render de notificação nativa, listener de push →
+      evento Wails; re-emitir chat:delta/done/error a partir do SSE
+
+fase 4 — segundo canal (prova do multi-canal)
+- [ ] Adapter de WhatsApp ou Telegram (webhook de entrada → intents do core → resposta),
+      reusando o mesmo core; valida que a mesma fonte/lógica/resposta serve outro canal
+- [ ] Validar assinatura dos webhooks; preferências de canal por usuário
+
+fase 5 — migração de dados & hardening
+- [ ] Migrar SQLite local existente → backend no primeiro login do usuário
+- [ ] Rate limiting, logs/erros, backups do Postgres, métricas de custo de IA por usuário
+
 feito
 - Limite de caracteres por nota com overflow interativo: default global + override por nota; ao anexar e estourar, o /note pergunta resumir/parte 2/dividir por tema; editor mostra contador ao vivo (notes_overflow.go, NoteEditor)
 - Links em markdown abrem no navegador (Browser.OpenURL via Wails runtime)

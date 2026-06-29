@@ -49,19 +49,65 @@ fase 1 — backend Railway (auth + dados + busca/IA)
       resposta completa, desktop recebe stream)
 - [ ] Deploy na Railway (Dockerfile, env: DATABASE_URL, JWT_SECRET, OPENROUTER_API_KEY)
 
-fase 2 — scheduler central + push
-- [ ] Scheduler server-side (alertas, recorrência, fuso por usuário) — dispara mesmo com o
-      desktop fechado
-- [ ] Canal de push de saída (WebSocket/SSE p/ desktop; por-canal p/ WhatsApp/Telegram depois);
-      no vencimento, push pro canal preferido do usuário
+fase 2 — scheduler central + push (feito no gix-server)
+- [x] Scheduler server-side (alertas, recorrência, fuso por usuário) — dispara mesmo com o
+      desktop fechado (internal/scheduler + internal/recur; user_prefs.timezone)
+- [x] Canal de push de saída: SSE p/ desktop (GET /v1/push) com outbox (alert_deliveries) p/
+      catch-up offline. Push por-canal pro WhatsApp/Telegram e preferência de canal ficam na
+      fase 4 (user_channels), quando existir 2º canal — o Notifier do scheduler é o seam
 
 fase 3 — desktop vira canal fino
-- [ ] Remover do gix: internal/db (SQLite), internal/embed (ONNX), internal/ai e os services de
+- [x] Remover do gix: internal/db (SQLite), internal/embed (ONNX), internal/ai e os services de
       dados; bindings de dados saem (some CGO/ONNX e o download de ~335MB)
-- [ ] React passa a chamar a API remota direto (fetch + SSE p/ chat); cliente de API + auth na
-      UI (login, token seguro via DPAPI/keychain)
-- [ ] Go fica só com nativo: hotkey, janela, render de notificação nativa, listener de push →
-      evento Wails; re-emitir chat:delta/done/error a partir do SSE
+      FEITO (2026-06-29): lógica duplicada apagada; gix builda só com desktop (shell/config/hotkey).
+      go.mod sem sqlite/onnx/tokenizer; config.go sem ModelPrices/Models (migrados p/ user_prefs).
+      Bindings de dados (.ts) removidos; ficou só ConfigService + notifications (desktop-only).
+- [x] React passa a chamar a API remota direto (fetch + SSE p/ chat); cliente de API + auth na UI
+      FEITO: src/api/{client,services,types}.ts — fetch+JWT+refresh em 401, SSE p/ chat e push;
+      as 12 views consomem api/services (rotas, eventos delta/done/error/usage/note_proposed/
+      alert_proposed e contrato de push alertId/message/noteId conferidos). ServerURL vem do
+      config local (server_url) e é editável no SettingsView.
+      LOGIN (2026-06-29): LoginView (login/cadastro) + gate no App.tsx (useSession); 401 definitivo
+      emite auth:error → volta p/ login; "Sair da conta" no SettingsView.
+      TOKEN SEGURO (2026-06-29): tokens saíram do localStorage. Vivem em memória (acesso síncrono)
+      e são persistidos cifrados no cofre nativo — internal/secret + TokenService (binding Wails):
+      DPAPI no Windows (crypt32, escopo do usuário), passthrough fora. loadTokens() hidrata no boot
+      e migra sessões antigas do localStorage uma vez. FALTA SÓ (futuro, não-Windows): keychain
+      (macOS) / secret-service (Linux) — hoje gravam em texto fora do Windows.
+- [x] Go fica só com nativo: hotkey, janela, render de notificação nativa, listener de push →
+      evento Wails. O listener de push e o re-emit de chat:delta/done/error rodam no frontend
+      (api/services.ts: streamSSE + dispatchers de events.ts); o Go só ergue o toast nativo via
+      NotificationService quando o frontend chama.
+
+remoção 2026-06-29 — lógica duplicada retirada do gix (portada p/ gix-server)
+Toda a lógica de negócio já existe em gix-server (ver docs/FASE2-HANDOFF.md lá: nenhuma
+intent retorna ErrNotImplemented). Removido do gix em 41 arquivos (git rm, stageado):
+- internal/ai/        — client.go, client_test.go (OpenRouter relay → gix-server/internal/ai)
+- internal/db/        — alerts, conversations, db, db_test, notes, schema, search (SQLite →
+                       gix-server/internal/store sobre Postgres+pgvector)
+- internal/embed/     — download, embed, embed_*test, lib, lib_*test, vec (ONNX e5-small →
+                       gix-server/internal/embed)
+- internal/app/ (25)  — alerts*.go (service + actions + create + scheduler + test),
+                       chat*.go (service + tools + test), history*.go, notes*.go (service +
+                       ask + capture + graph + overflow + route + search + testes),
+                       prompt.go (localTimeHeader → service/ai.go),
+                       provider.go (newProvider → service/service.go AI struct),
+                       recurrence*.go (→ gix-server/internal/recur)
+Mantido no gix (desktop-only): internal/app/{config,shell}.go, internal/config/,
+internal/hotkey/, main.go, frontend/.
+Estado: RESOLVIDO (2026-06-29) — o link com gix-server foi feito. gix builda; o frontend
+fala com o servidor via src/api/. Ver "pendências da remoção" abaixo (todas fechadas).
+
+pendências da remoção — TODAS FECHADAS (2026-06-29)
+- [x] go.mod sem modernc.org/sqlite, onnxruntime_go, sugarme/tokenizer (go mod tidy feito;
+      gix build ./... passa)
+- [x] internal/config/config.go sem ModelPrices/Models/DefaultModel — Model/APIKey/SystemPrompt/
+      NoteCharLimit migraram p/ user_prefs no gix-server (GET/PUT /v1/prefs); o ConfigService
+      local guarda só o que é desktop (server_url, hotkey, idioma, tema, opacidade)
+- [x] shell.go não referencia mais os services deletados — virou shell puro de desktop; o acesso
+      a chat/notas/alertas/histórico é do frontend via HTTP/SSE (api/services.ts)
+- [x] frontend/bindings/gix/internal/{app,db,config}/**.ts dos serviços deletados removidos;
+      sobrou só ConfigService (desktop) + notifications
 
 fase 4 — segundo canal (prova do multi-canal)
 - [ ] Adapter de WhatsApp ou Telegram (webhook de entrada → intents do core → resposta),

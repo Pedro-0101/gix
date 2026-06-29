@@ -75,7 +75,7 @@ export function InputBar({
       </div>
       <button
         onClick={onSubmit}
-        disabled={interaction?.kind === "choose" || (interaction == null && !input.trim())}
+        disabled={interaction?.kind === "choose" || (interaction == null && (streaming || !input.trim()))}
         aria-label={tr(lang, "placeholder")}
         className="grid size-8 shrink-0 self-center place-items-center rounded-field bg-accent text-white outline-none transition-[scale,opacity] duration-150 ease-out [--wails-draggable:no-drag] hover:brightness-110 active:not-disabled:scale-[0.96] disabled:opacity-40 focus-visible:shadow-[0_0_0_2px_var(--shell-bg),0_0_0_4px_var(--ring-focus)]"
       >

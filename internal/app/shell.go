@@ -1,9 +1,15 @@
+// Package app monta o shell desktop do gix (overlay Wails: janela frameless,
+// tray, hotkey global, config local e serviço de notificações toast).
+//
+// Toda a lógica de backend (chat/notas/alertas/histórico/IA/embeddings/scheduler)
+// vive no gix-server e é acessada pelo frontend via HTTP/SSE. O Go daqui só
+// cuida do que é intrinsecamente desktop: janela, tray, hotkey, prefs locais e
+// o serviço de notificações nativas (chamado pelo frontend quando um push SSE
+// de alerta chega).
 package app
 
 import (
-	"context"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -14,8 +20,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"gix/internal/config"
-	"gix/internal/db"
-	"gix/internal/embed"
 	"gix/internal/hotkey"
 )
 
@@ -48,27 +52,11 @@ func cursorScreen(screens []*application.Screen) *application.Screen {
 	return nil
 }
 
-// modelsDir is where the embedding model/tokenizer are cached, under the same
-// per-user config dir as the database (e.g. %AppData%/gix/models).
-func modelsDir() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "models"
-	}
-	return filepath.Join(dir, "gix", "models")
-}
-
 // Run bootstraps the Wails v3 application: registers the services, creates the
 // frameless always-on-top window (hidden at boot), the system tray, and the
 // global hotkey that shows/centers/focuses the window.
 func Run(assets fs.FS, trayIcon []byte) error {
-	database, err := db.New()
-	if err != nil {
-		database = nil
-	}
-
 	cfgSvc := NewConfigService()
-	histSvc := NewHistoryService(database)
 
 	var wailsApp *application.App
 	emit := func(name string, data any) {
@@ -76,52 +64,22 @@ func Run(assets fs.FS, trayIcon []byte) error {
 			wailsApp.Event.Emit(name, data)
 		}
 	}
-	chatSvc := NewChatService(cfgSvc, database, emit,
-		func(apiKey string) Streamer { return newProvider(apiKey) })
-	notesSvc := NewNotesService(cfgSvc, database,
-		func(apiKey string) Completer { return newProvider(apiKey) })
 
+	// Serviço de notificações nativas: o frontend o chama (via binding) quando
+	// um push SSE de alerta chega do gix-server, para erguer o toast do SO.
 	notifSvc := notifications.New()
 
-	// showMain is defined below (it needs mainWin). The alerts scheduler calls it
-	// through this indirection so a fired alert can surface the overlay.
-	var showMainFn func()
-	onShow := func() {
-		if showMainFn != nil {
-			showMainFn()
-		}
-	}
-	alertsSvc := NewAlertsService(cfgSvc, database,
-		func(apiKey string) Completer { return newProvider(apiKey) },
-		emit, onShow, notifSvc)
-
-	// Load the embedding model in the background so the UI starts instantly. The
-	// model+tokenizer download on first run (progress is forwarded to the
-	// frontend); until it's ready, search falls back to full-text only.
-	embed.OnDownloadProgress = func(file string, downloaded, total int64) {
-		emit("embed:progress", map[string]any{"file": file, "downloaded": downloaded, "total": total})
-	}
-	go func() {
-		e, err := embed.Open(context.Background(), modelsDir())
-		if err != nil {
-			log.Printf("embed: model unavailable, semantic search disabled: %v", err)
-			emit("embed:error", err.Error())
-			return
-		}
-		notesSvc.setEmbedder(e)
-		emit("embed:ready", nil)
-	}()
+	// Cofre de sessão: persiste o par de tokens JWT cifrado (DPAPI no Windows),
+	// para o frontend não guardar segredo em localStorage.
+	tokenSvc := NewTokenService()
 
 	wailsApp = application.New(application.Options{
 		Name:        "gix",
 		Description: "gix — overlay de chat com IA",
 		Services: []application.Service{
 			application.NewService(cfgSvc),
-			application.NewService(histSvc),
-			application.NewService(chatSvc),
-			application.NewService(notesSvc),
 			application.NewService(notifSvc),
-			application.NewService(alertsSvc),
+			application.NewService(tokenSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -159,7 +117,7 @@ func Run(assets fs.FS, trayIcon []byte) error {
 	})
 
 	// Show the palette pinned to the top-centre of the monitor where the mouse
-	// cursor currently sits. Reset to the collapsed height first so the window
+	// cursor currently sat. Reset to the collapsed height first so the window
 	// always re-opens as the bare input bar and grows downward as content
 	// streams in (the frontend animates the height via useWindowFit). Without
 	// this the OS keeps the previous session's height, so re-opening to a clean
@@ -181,21 +139,9 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		emit("window:shown", nil)
 	}
 
-	showMainFn = showMain
-
-	// Toast action buttons + click handling. The buttons and their handlers live
-	// together in the alerts service (alerts_actions.go); shell.go only wires the
-	// service's dispatcher to the notifier.
-	alertsSvc.RegisterCategory()
-	notifSvc.OnNotificationResponse(alertsSvc.HandleNotificationResponse)
-
-	// Scheduler goroutine; cancelled on app shutdown.
-	alertCtx, cancelAlerts := context.WithCancel(context.Background())
-	go alertsSvc.Run(alertCtx)
-
-	// Closing the window hides it (and cancels any in-flight stream) instead of quitting.
+	// Closing the window hides it instead of quitting. O cancelamento de stream
+	// de chat é feito pelo frontend (AbortController) — o Go só esconde a janela.
 	mainWin.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		chatSvc.Cancel()
 		mainWin.Hide()
 		e.Cancel()
 	})
@@ -214,11 +160,12 @@ func Run(assets fs.FS, trayIcon []byte) error {
 		hotkey.Apply(c.OpenKey, c.OpenIntervalMs, c.OpenPressCount)
 	})
 
-	err = wailsApp.Run()
-
-	cancelAlerts()
-	if database != nil {
-		database.Close()
+	// Garantia de diretório de dados do usuário (não usado diretamente aqui, mas
+	// mantido para futuros caches locais do desktop). Sem erro => segue.
+	if dir, err := os.UserConfigDir(); err == nil {
+		_ = os.MkdirAll(filepath.Join(dir, "gix"), 0o755)
 	}
+
+	err := wailsApp.Run()
 	return err
 }

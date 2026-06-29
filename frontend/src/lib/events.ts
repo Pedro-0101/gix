@@ -1,46 +1,57 @@
 import { Events } from '@wailsio/runtime'
+import type { AlertProposal, Usage } from '../api/types'
 
-export type UsagePayload = { tokens: number; cost: number }
-export type DonePayload = { content: string }
+// --- Pub-sub local para eventos que antes vinham do Go via Wails Events ---
+// (chat stream, propostas da IA, alertas disparados via push SSE). O Go só
+// emite mais o window:shown (hotkey/tray). O resto é produzido pelo cliente
+// HTTP/SSE em services.ts e dispersado aqui.
 
-export const onChatDelta = (cb: (delta: string) => void) =>
-  Events.On('chat:delta', (e) => cb(e.data as string))
+type Handler<T> = (payload: T) => void
 
-export const onChatUsage = (cb: (u: UsagePayload) => void) =>
-  Events.On('chat:usage', (e) => cb(e.data as UsagePayload))
+const subs: Record<string, Set<Handler<any>>> = {}
+function dispatch<T>(name: string, payload: T) {
+  const set = subs[name]
+  if (!set) return
+  for (const fn of set) { try { fn(payload) } catch { /* handler isolado */ } }
+}
+function subscribe<T>(name: string, cb: Handler<T>): () => void {
+  ;(subs[name] ??= new Set()).add(cb as Handler<any>)
+  return () => { subs[name]?.delete(cb as Handler<any>) }
+}
 
-export const onChatDone = (cb: (d: DonePayload) => void) =>
-  Events.On('chat:done', (e) => cb(e.data as DonePayload))
+// --- Chat (produzido pelo consumer SSE de POST /v1/chat em services.ts) ---
 
-export const onChatError = (cb: (msg: string) => void) =>
-  Events.On('chat:error', (e) => cb(e.data as string))
+export const emitChatDelta = (delta: string) => dispatch('chat:delta', delta)
+export const emitChatDone = (content: string) => dispatch('chat:done', { content })
+export const emitChatError = (msg: string) => dispatch('chat:error', msg)
+export const emitChatUsage = (u: Usage) => dispatch('chat:usage', u)
+export const emitNoteProposed = (n: { title: string; content: string; tags: string[] }) => dispatch('note:proposed', n)
+export const emitAlertProposed = (a: AlertProposal) => dispatch('alert:proposed', a)
 
-// Fired by Go each time the window is shown via hotkey/tray — reset to the bar.
-export const onWindowShown = (cb: () => void) =>
-  Events.On('window:shown', () => cb())
+export const onChatDelta = (cb: (delta: string) => void) => subscribe<string>('chat:delta', cb)
+export const onChatUsage = (cb: (u: Usage) => void) => subscribe<Usage>('chat:usage', cb)
+export const onChatDone = (cb: (d: { content: string }) => void) => subscribe<{ content: string }>('chat:done', cb)
+export const onChatError = (cb: (msg: string) => void) => subscribe<string>('chat:error', cb)
+export const onNoteProposed = (cb: (p: { title: string; content: string; tags: string[] }) => void) => subscribe<{ title: string; content: string; tags: string[] }>('note:proposed', cb)
+export const onAlertProposed = (cb: (p: AlertProposal) => void) => subscribe<AlertProposal>('alert:proposed', cb)
+
+// --- Alertas disparados (produzido pelo consumer SSE de GET /v1/push) ---
 
 export type AlertFiredPayload = { id: number; message: string; noteId: number | null }
-
-// Fired by Go when an alert's time arrives — show a card if the overlay is open.
-export const onAlertFired = (cb: (a: AlertFiredPayload) => void) =>
-  Events.On('alert:fired', (e) => cb(e.data as AlertFiredPayload))
-
 export type AlertOpenPayload = { id: number; noteId: number | null }
 
-// Fired when the user clicks a toast body — open the alerts view (or the linked note).
-export const onAlertOpen = (cb: (p: AlertOpenPayload) => void) =>
-  Events.On('alert:open', (e) => cb(e.data as AlertOpenPayload))
+export const emitAlertFired = (a: AlertFiredPayload) => dispatch('alert:fired', a)
+export const emitAlertOpen = (p: AlertOpenPayload) => dispatch('alert:open', p)
 
-export type AlertProposedPayload = { message: string; fireAt: string; recurrence: string }
+export const onAlertFired = (cb: (a: AlertFiredPayload) => void) => subscribe<AlertFiredPayload>('alert:fired', cb)
+export const onAlertOpen = (cb: (p: AlertOpenPayload) => void) => subscribe<AlertOpenPayload>('alert:open', cb)
 
-// Fired by Go when the chat model proposes an alert (create_alert tool call) —
-// the shell asks the user to confirm before scheduling it.
-export const onAlertProposed = (cb: (p: AlertProposedPayload) => void) =>
-  Events.On('alert:proposed', (e) => cb(e.data as AlertProposedPayload))
+// --- Auth (o refresh falhou em definitivo → a UI volta p/ a tela de login) ---
 
-export type NoteProposedPayload = { title: string; content: string; tags: string[] }
+export const emitAuthError = () => dispatch('auth:error', undefined)
+export const onAuthError = (cb: () => void) => subscribe<void>('auth:error', cb)
 
-// Fired by Go when the chat model proposes a note (create_note tool call) —
-// the shell asks the user to confirm before saving it.
-export const onNoteProposed = (cb: (p: NoteProposedPayload) => void) =>
-  Events.On('note:proposed', (e) => cb(e.data as NoteProposedPayload))
+// --- Window:shown permanece vindo do Go (hotkey/tray) ---
+
+export const onWindowShown = (cb: () => void) =>
+  Events.On('window:shown', () => cb())

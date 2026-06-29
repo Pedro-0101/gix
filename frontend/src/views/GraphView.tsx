@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { forceCenter, type Simulation } from 'd3-force'
-import { NotesService } from '../../bindings/gix/internal/app'
+import { NotesService } from '../api/services'
 import { buildSimulation, makeStars, type GraphData } from './graph/simulation'
 import { drawGraph } from './graph/render'
 import type { SimLink, SimNode, Star } from './graph/types'
@@ -50,7 +50,7 @@ export function GraphView({
     setLoading(true)
     setError(null)
 
-    NotesService.GetGraphData().then((data) => {
+    NotesService.graph().then((data) => {
       if (cancelled) return
       const gd = data as unknown as GraphData
       if (!gd || !gd.nodes || gd.nodes.length === 0) {

@@ -1,3 +1,9 @@
+// Package config carrega a configuração LOCAL do desktop gix: preferências de
+// shell que só fazem sentido no cliente (tema, opacidade, hotkeys, idioma).
+//
+// Toda a lógica de backend (IA, modelos, pricing, prefs de usuário como
+// system_prompt/note_char_limit/api_key) vive no gix-server e é acessada via
+// HTTP. Este config não contém mais nenhum segredo nem campo de IA.
 package config
 
 import (
@@ -7,54 +13,7 @@ import (
 	"strings"
 )
 
-// ModelPricing representa o custo por 1M de tokens (USD).
-type ModelPricing struct {
-	InputPrice  float64
-	OutputPrice float64
-}
-
-// CalculateCost calcula o custo em dólares a partir do uso de tokens.
-func (p ModelPricing) CalculateCost(promptTokens, completionTokens int) float64 {
-	inputCost := p.InputPrice * float64(promptTokens) / 1_000_000
-	outputCost := p.OutputPrice * float64(completionTokens) / 1_000_000
-	return inputCost + outputCost
-}
-
-// ModelPrices mapeia cada modelo ao seu custo por 1M tokens (USD) no OpenRouter.
-var ModelPrices = map[string]ModelPricing{
-	"google/gemini-2.5-flash-lite":       {0.075, 0.30},
-	"google/gemini-2.5-flash":            {0.10, 0.40},
-	"google/gemini-2.5-pro":              {1.25, 5.00},
-	"openai/gpt-4o":                      {2.50, 10.00},
-	"openai/gpt-4o-mini":                 {0.15, 0.60},
-	"openai/o3-mini":                     {1.10, 4.40},
-	"anthropic/claude-sonnet-4-20250514": {3.00, 15.00},
-	"anthropic/claude-3.5-haiku":         {0.80, 4.00},
-	"deepseek/deepseek-chat":             {0.27, 1.10},
-	"deepseek/deepseek-r1":               {0.55, 2.19},
-	"meta-llama/llama-3.3-70b-instruct":  {0.25, 0.25},
-	"mistral/mistral-large":              {2.00, 6.00},
-}
-
-// DefaultModel é o modelo padrão do sistema.
-const DefaultModel = "google/gemini-2.5-flash-lite"
-
-// Models é a lista fixa de modelos disponíveis para o usuário escolher.
-var Models = []string{
-	"google/gemini-2.5-flash-lite",
-	"google/gemini-2.5-flash",
-	"google/gemini-2.5-pro",
-	"openai/gpt-4o",
-	"openai/gpt-4o-mini",
-	"openai/o3-mini",
-	"anthropic/claude-sonnet-4-20250514",
-	"anthropic/claude-3.5-haiku",
-	"deepseek/deepseek-chat",
-	"deepseek/deepseek-r1",
-	"meta-llama/llama-3.3-70b-instruct",
-	"mistral/mistral-large",
-}
-
+// Config é o conjunto de preferências locais do desktop gix.
 type Config struct {
 	Theme           string `json:"theme"`
 	Language        string `json:"language"`
@@ -64,17 +23,12 @@ type Config struct {
 	CloseKey        string `json:"close_key"`
 	CloseIntervalMs int    `json:"close_interval_ms"`
 	ClosePressCount int    `json:"close_press_count"`
-	Model           string `json:"model"`
-	APIKey          string `json:"api_key"`
-	SystemPrompt    string `json:"system_prompt"`
 	// Opacity is the background opacity of the palette shell, 0–100 (percent).
 	// Higher is more opaque; the remainder lets the acrylic backdrop show through.
 	Opacity int `json:"opacity"`
-	// NoteCharLimit is the global default size ceiling for a single note, in
-	// characters (runes). When a capture append would push a note past it, the
-	// user is asked how to handle the overflow. A per-note override lives in the
-	// notes table (0 there = inherit this default).
-	NoteCharLimit int `json:"note_char_limit"`
+	// ServerURL é a base do gix-server (ex.: http://localhost:3000 ou
+	// https://gix.up.railway.app). O frontend usa para todas as chamadas HTTP.
+	ServerURL string `json:"server_url"`
 }
 
 func Default() *Config {
@@ -87,11 +41,8 @@ func Default() *Config {
 		CloseKey:        "Escape",
 		CloseIntervalMs: 500,
 		ClosePressCount: 2,
-		Model:           DefaultModel,
-		APIKey:          "",
-		SystemPrompt:    "Responda de forma direta e objetiva. Mantenha as respostas concisas e vá direto ao ponto.",
 		Opacity:         85,
-		NoteCharLimit:   8000,
+		ServerURL:       "http://localhost:3000",
 	}
 }
 
@@ -149,32 +100,16 @@ func Load() *Config {
 	if loaded.ClosePressCount < 2 || loaded.ClosePressCount > 3 {
 		loaded.ClosePressCount = cfg.ClosePressCount
 	}
-	if loaded.Model == "" || !isValidModel(loaded.Model) {
-		loaded.Model = cfg.Model
-	}
-	if loaded.SystemPrompt == "" {
-		loaded.SystemPrompt = cfg.SystemPrompt
-	}
 	if loaded.Opacity <= 0 {
 		loaded.Opacity = cfg.Opacity
 	}
 	if loaded.Opacity > 100 {
 		loaded.Opacity = 100
 	}
-	if loaded.NoteCharLimit <= 0 {
-		loaded.NoteCharLimit = cfg.NoteCharLimit
+	if strings.TrimSpace(loaded.ServerURL) == "" {
+		loaded.ServerURL = cfg.ServerURL
 	}
-	// APIKey vazio é válido: cai para a variável de ambiente em ResolveAPIKey.
 	return &loaded
-}
-
-func isValidModel(model string) bool {
-	for _, m := range Models {
-		if m == model {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *Config) Save() error {
@@ -191,15 +126,6 @@ func (c *Config) Save() error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-// ResolveAPIKey retorna a chave das settings, ou, se vazia, a variável de
-// ambiente OPENROUTER_API_KEY.
-func (c *Config) ResolveAPIKey() string {
-	if strings.TrimSpace(c.APIKey) != "" {
-		return strings.TrimSpace(c.APIKey)
-	}
-	return os.Getenv("OPENROUTER_API_KEY")
 }
 
 // parseDotEnv lê linhas CHAVE=VALOR, ignorando comentários (#), linhas em

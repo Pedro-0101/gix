@@ -17,10 +17,6 @@ export function Get(): $CancellablePromise<config$0.Config | null> {
     return $Call.ByID(3478997624);
 }
 
-export function Models(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(252474270);
-}
-
 export function OnSave(fn: any): $CancellablePromise<void> {
     return $Call.ByID(3848374488, fn);
 }

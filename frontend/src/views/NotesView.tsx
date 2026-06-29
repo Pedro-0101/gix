@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertsService, ConfigService, NotesService } from '../../bindings/gix/internal/app'
-import type { Note } from '../../bindings/gix/internal/db'
+import { AlertsService, NotesService, Prefs } from '../api/services'
+import type { Note } from '../api/types'
 import { Markdown } from '../components/Markdown'
 import { Button } from '../components/Button'
 import { UndoToast } from '../components/UndoToast'
@@ -33,19 +33,19 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
   const activeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    ConfigService.Get().then((c: any) => {
-      if (c?.note_char_limit) setDefaultLimit(c.note_char_limit)
-    })
+    Prefs.get().then((p) => {
+      if (p.charLimit) setDefaultLimit(p.charLimit)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
-    NotesService.List().then((n) => {
+    NotesService.list().then((n) => {
       const list = n ?? []
       setNotes(list)
       if (list.length > 0) {
-        const targetId = initialActiveId && list.some((note) => note.ID === initialActiveId)
+        const targetId = initialActiveId && list.some((note) => note.id === initialActiveId)
           ? initialActiveId
-          : list[0].ID
+          : list[0].id
         setActiveId(targetId)
       }
     })
@@ -57,7 +57,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
   if (ddRef.current === null) {
     ddRef.current = createDeferredDelete({
       delayMs: DELETE_GRACE_MS,
-      commit: (id) => { NotesService.Delete(id) },
+      commit: (id) => { NotesService.delete(id) },
       onChange: (id) => { if (id === null) setPendingDelete(null) },
     })
   }
@@ -73,9 +73,9 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
       e.preventDefault()
       e.stopPropagation()
-      const idx = notes.findIndex((n) => n.ID === activeId)
+      const idx = notes.findIndex((n) => n.id === activeId)
       const next = moveSelection(notes.length, idx === -1 ? 0 : idx, e.key === 'ArrowDown' ? 1 : -1)
-      setActiveId(notes[next].ID)
+      setActiveId(notes[next].id)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -99,43 +99,43 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
     activeRef.current?.scrollIntoView({ block: 'nearest' })
   }, [activeId])
 
-  const active = notes.find((n) => n.ID === activeId)
+  const active = notes.find((n) => n.id === activeId)
 
   const handleSave = async (title: string, content: string, tags: string[], charLimit: number) => {
     if (editingId === null) return
     // Persist the override first so the re-fetched note carries the new limit.
-    await NotesService.SetCharLimit(editingId, charLimit)
-    const updated = await NotesService.Update(editingId, title, content, tags)
-    setNotes((list) => list.map((n) => (n.ID === updated.ID ? updated : n)))
-    setActiveId(updated.ID)
+    await NotesService.setCharLimit(editingId, charLimit)
+    const updated = await NotesService.update(editingId, title, content, tags)
+    setNotes((list) => list.map((n) => (n.id === updated.id ? updated : n)))
+    setActiveId(updated.id)
     setEditingId(null)
   }
 
   const handleDelete = (note: Note) => {
-    const index = notes.findIndex((n) => n.ID === note.ID)
-    const remaining = notes.filter((n) => n.ID !== note.ID)
+    const index = notes.findIndex((n) => n.id === note.id)
+    const remaining = notes.filter((n) => n.id !== note.id)
     setNotes(remaining)
     // Select a neighbour so the detail pane isn't left empty.
-    if (activeId === note.ID) {
+    if (activeId === note.id) {
       const next = remaining[Math.min(index, remaining.length - 1)]
-      setActiveId(next ? next.ID : null)
+      setActiveId(next ? next.id : null)
     }
     setPendingDelete({ note, index })
-    ddRef.current?.schedule(note.ID)
+    ddRef.current?.schedule(note.id)
   }
 
   const submitAlert = async () => {
     if (alertFor === null) return
     const text = whenText.trim()
-    if (text) await AlertsService.CreateForNote(alertFor, text)
+    if (text) await AlertsService.createForNote(alertFor, text)
     setAlertFor(null); setWhenText('')
   }
 
   // Summarize and tidy share one "AI rewrites the body, with undo" flow; each gets
   // its own instance. applyRewrite reconciles the list + selection after apply/undo.
   const applyRewrite = (n: Note) => {
-    setNotes((list) => list.map((x) => (x.ID === n.ID ? n : x)))
-    setActiveId(n.ID)
+    setNotes((list) => list.map((x) => (x.id === n.id ? n : x)))
+    setActiveId(n.id)
   }
   const summary = useNoteRewrite(DELETE_GRACE_MS, applyRewrite)
   const tidy = useNoteRewrite(DELETE_GRACE_MS, applyRewrite)
@@ -148,7 +148,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
       copy.splice(Math.min(index, copy.length), 0, note)
       return copy
     })
-    setActiveId(note.ID)
+    setActiveId(note.id)
     ddRef.current?.undo()
   }
 
@@ -178,7 +178,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
         {active && (
           <>
             <div className="flex shrink-0 justify-end gap-1 p-2">
-              <Button variant="ghost" onClick={() => { setAlertFor(active.ID); setWhenText('') }} className="gap-1">
+              <Button variant="ghost" onClick={() => { setAlertFor(active.id); setWhenText('') }} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round" className="size-4">
                   <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -188,7 +188,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
               </Button>
               <Button variant="ghost" disabled={summary.busy}
                 onClick={() => summary.run(active, async (id) => {
-                  const r = await NotesService.Summarize(id)
+                  const r = await NotesService.summarize(id)
                   return r.status === 'ok' ? r.summary : null
                 })} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
@@ -199,7 +199,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
               </Button>
               <Button variant="ghost" disabled={tidy.busy}
                 onClick={() => tidy.run(active, async (id) => {
-                  const r = await NotesService.Tidy(id)
+                  const r = await NotesService.tidy(id)
                   return r.status === 'ok' ? r.content : null
                 })} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
@@ -208,7 +208,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
                 </svg>
                 {tr(lang, 'tidy')}
               </Button>
-              <Button variant="ghost" onClick={() => setEditingId(active.ID)} className="gap-1">
+              <Button variant="ghost" onClick={() => setEditingId(active.id)} className="gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round" className="size-4">
                   <path d="M12 20h9" />
@@ -224,7 +224,7 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
                 {tr(lang, 'delete')}
               </Button>
             </div>
-            {alertFor === active.ID && (
+            {alertFor === active.id && (
               <div className="shrink-0 px-4 pb-2">
                 <input
                   autoFocus
@@ -240,8 +240,8 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
               </div>
             )}
             <article className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 selectable">
-              <h1 className="mb-3 font-mono text-base font-bold text-fg">{active.Title}</h1>
-              <Markdown>{active.Content}</Markdown>
+              <h1 className="mb-3 font-mono text-base font-bold text-fg">{active.title}</h1>
+              <Markdown>{active.content}</Markdown>
             </article>
           </>
         )}
@@ -250,21 +250,21 @@ export function NotesView({ lang, onClose, initialActiveId }: { lang: string; on
       <UndoToast
         open={!!pendingDelete}
         message={tr(lang, 'note_deleted')}
-        title={pendingDelete?.note.Title ?? ''}
+        title={pendingDelete?.note.title ?? ''}
         undoLabel={tr(lang, 'undo')}
         onUndo={handleUndo}
       />
       <UndoToast
         open={!!summary.pending}
         message={tr(lang, 'note_summarized')}
-        title={summary.pending?.note.Title ?? ''}
+        title={summary.pending?.note.title ?? ''}
         undoLabel={tr(lang, 'undo')}
         onUndo={summary.undo}
       />
       <UndoToast
         open={!!tidy.pending}
         message={tr(lang, 'note_tidied')}
-        title={tidy.pending?.note.Title ?? ''}
+        title={tidy.pending?.note.title ?? ''}
         undoLabel={tr(lang, 'undo')}
         onUndo={tidy.undo}
       />

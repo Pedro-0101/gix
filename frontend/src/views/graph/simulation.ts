@@ -5,7 +5,7 @@ import {
   forceCenter,
   forceCollide,
 } from "d3-force"
-import type { GraphNode, GraphEdge } from "../../../bindings/gix/internal/app"
+import type { GraphNode, GraphEdge } from "../../api/types"
 import type { SimLink, SimNode, Star } from "./types"
 
 export type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] }

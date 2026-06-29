@@ -27,10 +27,6 @@ func (s *ConfigService) Current() *config.Config {
 	return s.Get()
 }
 
-func (s *ConfigService) Models() []string {
-	return config.Models
-}
-
 func (s *ConfigService) OnSave(fn func(*config.Config)) {
 	s.mu.Lock()
 	s.onSave = append(s.onSave, fn)

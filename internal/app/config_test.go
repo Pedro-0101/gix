@@ -11,7 +11,7 @@ func TestConfigServiceSaveUpdatesCurrent(t *testing.T) {
 
 	s := NewConfigService()
 	c := *s.Get()
-	c.SystemPrompt = "novo prompt"
+	c.Opacity = 42
 
 	called := false
 	s.OnSave(func(cfg *config.Config) { called = true })
@@ -19,19 +19,10 @@ func TestConfigServiceSaveUpdatesCurrent(t *testing.T) {
 	if err := s.Save(c); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if s.Current().SystemPrompt != "novo prompt" {
-		t.Fatalf("Current não atualizou: %q", s.Current().SystemPrompt)
+	if s.Current().Opacity != 42 {
+		t.Fatalf("Current não atualizou: %d", s.Current().Opacity)
 	}
 	if !called {
 		t.Fatal("callback OnSave não foi chamado")
-	}
-}
-
-func TestConfigServiceModels(t *testing.T) {
-	t.Setenv("AppData", t.TempDir())
-
-	s := NewConfigService()
-	if len(s.Models()) == 0 {
-		t.Fatal("Models vazio")
 	}
 }

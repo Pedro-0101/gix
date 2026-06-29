@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { AlertsService } from '../../bindings/gix/internal/app'
-import type { Alert } from '../../bindings/gix/internal/db'
+import { AlertsService } from '../api/services'
+import type { Alert } from '../api/types'
 import { Button } from '../components/Button'
 import { moveSelection } from '../commands/interaction'
 import { recurrenceLabel, formatFireAt } from '../lib/alerts'
@@ -17,27 +17,27 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
   const activeRef = useRef<HTMLButtonElement>(null)
 
   const load = useCallback(() => {
-    AlertsService.List().then((a) => {
+    AlertsService.list().then((a) => {
       const list = a ?? []
       setAlerts(list)
-      setActiveId((cur) => cur ?? (focusId ?? (list.find((x) => x.Status === 'pending')?.ID ?? null)))
+      setActiveId((cur) => cur ?? (focusId ?? (list.find((x) => x.status === 'pending')?.id ?? null)))
     })
   }, [focusId])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (focusId != null) setActiveId(focusId) }, [focusId])
 
-  const pending = alerts.filter((a) => a.Status === 'pending')
-  const done = alerts.filter((a) => a.Status !== 'pending')
+  const pending = alerts.filter((a) => a.status === 'pending')
+  const done = alerts.filter((a) => a.status !== 'pending')
 
   useEffect(() => {
     if (pending.length === 0) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
       e.preventDefault(); e.stopPropagation()
-      const idx = pending.findIndex((a) => a.ID === activeId)
+      const idx = pending.findIndex((a) => a.id === activeId)
       const next = moveSelection(pending.length, idx === -1 ? 0 : idx, e.key === 'ArrowDown' ? 1 : -1)
-      setActiveId(pending[next].ID)
+      setActiveId(pending[next].id)
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -45,11 +45,11 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
 
   useEffect(() => { activeRef.current?.scrollIntoView({ block: 'nearest' }) }, [activeId])
 
-  const snooze = async (a: Alert) => { await AlertsService.Snooze(a.ID, 10); load() }
-  const complete = async (a: Alert) => { await AlertsService.Done(a.ID); load() }
-  const remove = async (a: Alert) => { await AlertsService.Cancel(a.ID); load() }
+  const snooze = async (a: Alert) => { await AlertsService.snooze(a.id, 10); load() }
+  const complete = async (a: Alert) => { await AlertsService.done(a.id); load() }
+  const remove = async (a: Alert) => { await AlertsService.cancel(a.id); load() }
 
-  const meta = (a: Alert) => [formatFireAt(a.FireAt, lang), recurrenceLabel(lang, a.Recurrence)].filter(Boolean).join(' · ')
+  const meta = (a: Alert) => [formatFireAt(a.fireAt, lang), recurrenceLabel(lang, a.recurrence)].filter(Boolean).join(' · ')
 
   return (
     <div className="flex h-full flex-col font-mono text-fg">
@@ -69,10 +69,10 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
         )}
         <div className="space-y-0.5">
           {pending.map((a, i) => {
-            const isActive = activeId === a.ID
+            const isActive = activeId === a.id
             return (
               <motion.div
-                key={a.ID}
+                key={a.id}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(i * 0.03, 0.2) }}
@@ -81,11 +81,11 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
                 <div className="flex items-center justify-between gap-2 px-2.5 py-2">
                   <button
                     ref={isActive ? activeRef : undefined}
-                    onClick={() => setActiveId(a.ID)}
+                    onClick={() => setActiveId(a.id)}
                     className="min-w-0 flex-1 cursor-pointer text-left outline-none"
                   >
                     <div className="truncate text-sm">
-                      {a.Message}
+                      {a.message}
                     </div>
                     <div className="truncate text-xs text-muted">{meta(a)}</div>
                   </button>
@@ -111,8 +111,8 @@ export function AlertsView({ lang, focusId, onClose }: { lang: string; focusId: 
             {showDone && (
               <div className="space-y-0.5 opacity-60">
                 {done.map((a) => (
-                  <div key={a.ID} className="flex items-center justify-between gap-2 px-2.5 py-1.5">
-                    <span className="min-w-0 flex-1 truncate text-sm line-through">{a.Message}</span>
+                  <div key={a.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+                    <span className="min-w-0 flex-1 truncate text-sm line-through">{a.message}</span>
                     <Button variant="ghost" onClick={() => remove(a)}>{tr(lang, 'alert_cancel')}</Button>
                   </div>
                 ))}

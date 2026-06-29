@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { NotesService } from '../../bindings/gix/internal/app'
-import type { Note } from '../../bindings/gix/internal/db'
+import { NotesService } from '../api/services'
+import type { Note } from '../api/types'
 
 // useNoteRewrite encapsulates the "AI rewrites a note's body, with undo" flow
 // shared by the summarize and tidy buttons in the notes view. Call run() with an
@@ -19,9 +19,9 @@ export function useNoteRewrite(graceMs: number, onApplied: (note: Note) => void)
   const run = async (note: Note, produce: (id: number) => Promise<string | null>) => {
     setBusy(true)
     try {
-      const body = await produce(note.ID)
+      const body = await produce(note.id)
       if (!body) return
-      onApplied(await NotesService.Update(note.ID, note.Title, body, note.Tags ?? []))
+      onApplied(await NotesService.update(note.id, note.title, body, note.tags ?? []))
       setPending({ note })
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => setPending(null), graceMs)
@@ -33,7 +33,7 @@ export function useNoteRewrite(graceMs: number, onApplied: (note: Note) => void)
   const undo = async () => {
     if (!pending) return
     const { note } = pending
-    onApplied(await NotesService.Update(note.ID, note.Title, note.Content, note.Tags ?? []))
+    onApplied(await NotesService.update(note.id, note.title, note.content, note.tags ?? []))
     setPending(null)
     if (timer.current) clearTimeout(timer.current)
   }

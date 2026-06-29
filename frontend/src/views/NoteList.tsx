@@ -1,6 +1,6 @@
 import type { Ref } from 'react'
 import { motion } from 'motion/react'
-import type { Note } from '../../bindings/gix/internal/db'
+import type { Note } from '../api/types'
 import { Button } from '../components/Button'
 import { tr } from '../i18n'
 
@@ -39,10 +39,10 @@ export function NoteList({
         )}
         <div className="space-y-0.5">
           {notes.map((n, i) => {
-            const isActive = activeId === n.ID
+            const isActive = activeId === n.id
             return (
               <motion.div
-                key={n.ID}
+                key={n.id}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(i * 0.03, 0.2) }}
@@ -52,10 +52,10 @@ export function NoteList({
               >
                 <button
                   ref={isActive ? activeRef : undefined}
-                  onClick={() => setActiveId(n.ID)}
+                  onClick={() => setActiveId(n.id)}
                   className="block w-full cursor-pointer truncate px-2.5 py-2 text-left text-sm outline-none"
                 >
-                  {n.Title}
+                  {n.title}
                 </button>
               </motion.div>
             )

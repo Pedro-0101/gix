@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { ConfigService } from '../../bindings/gix/internal/app'
+import { logout, Models, Prefs } from '../api/services'
+import { emitAuthError } from '../lib/events'
 import { Button } from '../components/Button'
 import { Slider } from '../components/Slider'
 import { tr } from '../i18n'
@@ -13,26 +15,40 @@ const field =
   'transition-[box-shadow] duration-150 ease-out ' +
   'focus-visible:shadow-[0_0_0_1px_var(--ring-focus),0_0_0_3px_color-mix(in_srgb,var(--ring-focus)_25%,transparent)]'
 
+// Settings reúne duas fontes: prefs locais de desktop (ConfigService — tema,
+// opacidade, hotkeys, idioma, server_url) e prefs de usuário no gix-server
+// (Prefs — modelo, system_prompt, note_char_limit). A api_key não aparece mais:
+// vive só no servidor. O botão Salvar grava ambas as fontes.
 export function SettingsView({ lang, onClose }: { lang: string; onClose: () => void }) {
   const [cfg, setCfg] = useState<any>(null)
+  const [prefs, setPrefs] = useState<any>(null)
   const [models, setModels] = useState<string[]>([])
 
   useEffect(() => {
     ConfigService.Get().then(setCfg)
-    ConfigService.Models().then((m) => setModels(m ?? []))
+    Prefs.get().then(setPrefs).catch(() => setPrefs({}))
+    Models.list().then((m) => setModels(m.map((x) => x.id))).catch(() => {})
   }, [])
 
   if (!cfg) return null
 
-  const set = (k: string, v: any) => setCfg({ ...cfg, [k]: v })
+  const setCfgField = (k: string, v: any) => setCfg({ ...cfg, [k]: v })
+  const setPrefsField = (k: string, v: any) => setPrefs({ ...prefs, [k]: v })
 
   const save = async () => {
-    // os campos de intervalo já são coeridos a número nos onChange
+    // prefs locais de desktop
     await ConfigService.Save(cfg)
+    // prefs de usuário no servidor (só se carregou)
+    if (prefs) {
+      await Prefs.update({
+        model: prefs.model,
+        systemPrompt: prefs.systemPrompt,
+        charLimit: prefs.charLimit,
+      }).catch(() => {})
+    }
     onClose()
   }
 
-  // A row in the form: label on the left, control on the right.
   const Row = ({ label, children, i }: { label: string; children: ReactNode; i: number }) => (
     <motion.label
       initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
@@ -58,21 +74,21 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
         </motion.h1>
 
         <Row label={tr(lang, 'theme')} i={1}>
-          <select className={field} value={cfg.theme} onChange={(e) => set('theme', e.target.value)}>
+          <select className={field} value={cfg.theme} onChange={(e) => setCfgField('theme', e.target.value)}>
             <option value="light">{tr(lang, 'light')}</option>
             <option value="dark">{tr(lang, 'dark')}</option>
           </select>
         </Row>
 
         <Row label={tr(lang, 'language')} i={2}>
-          <select className={field} value={cfg.language} onChange={(e) => set('language', e.target.value)}>
+          <select className={field} value={cfg.language} onChange={(e) => setCfgField('language', e.target.value)}>
             <option value="pt">{tr(lang, 'portuguese')}</option>
             <option value="en">{tr(lang, 'english')}</option>
           </select>
         </Row>
 
         <Row label={tr(lang, 'model')} i={3}>
-          <select className={field} value={cfg.model} onChange={(e) => set('model', e.target.value)}>
+          <select className={field} value={prefs?.model ?? ''} onChange={(e) => setPrefsField('model', e.target.value)}>
             {models.map((m) => (<option key={m} value={m}>{m}</option>))}
           </select>
         </Row>
@@ -84,12 +100,12 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
             min={0}
             max={100}
             step={5}
-            onChange={(v) => set('opacity', v)}
+            onChange={(v) => setCfgField('opacity', v)}
           />
         </Row>
 
         <Row label={tr(lang, 'open_hotkey')} i={5}>
-          <select className={field} value={cfg.open_key} onChange={(e) => set('open_key', e.target.value)}>
+          <select className={field} value={cfg.open_key} onChange={(e) => setCfgField('open_key', e.target.value)}>
             {KEY_OPTIONS.map((k) => (<option key={k} value={k}>{k}</option>))}
           </select>
         </Row>
@@ -101,19 +117,19 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
             min={100}
             max={2000}
             step={50}
-            onChange={(v) => set('open_interval_ms', v)}
+            onChange={(v) => setCfgField('open_interval_ms', v)}
           />
         </Row>
 
         <Row label={tr(lang, 'open_press_count')} i={7}>
-          <select className={field} value={cfg.open_press_count} onChange={(e) => set('open_press_count', Number(e.target.value))}>
+          <select className={field} value={cfg.open_press_count} onChange={(e) => setCfgField('open_press_count', Number(e.target.value))}>
             <option value={2}>2</option>
             <option value={3}>3</option>
           </select>
         </Row>
 
         <Row label={tr(lang, 'close_hotkey')} i={8}>
-          <select className={field} value={cfg.close_key} onChange={(e) => set('close_key', e.target.value)}>
+          <select className={field} value={cfg.close_key} onChange={(e) => setCfgField('close_key', e.target.value)}>
             {KEY_OPTIONS.map((k) => (<option key={k} value={k}>{k}</option>))}
           </select>
         </Row>
@@ -125,42 +141,36 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
             min={100}
             max={2000}
             step={50}
-            onChange={(v) => set('close_interval_ms', v)}
+            onChange={(v) => setCfgField('close_interval_ms', v)}
           />
         </Row>
 
         <Row label={tr(lang, 'close_press_count')} i={10}>
-          <select className={field} value={cfg.close_press_count} onChange={(e) => set('close_press_count', Number(e.target.value))}>
+          <select className={field} value={cfg.close_press_count} onChange={(e) => setCfgField('close_press_count', Number(e.target.value))}>
             <option value={2}>2</option>
             <option value={3}>3</option>
           </select>
         </Row>
 
-        <Row label={tr(lang, 'note_char_limit')} i={9}>
+        <Row label={tr(lang, 'note_char_limit')} i={11}>
           <Slider
             ariaLabel={tr(lang, 'note_char_limit')}
-            value={cfg.note_char_limit ?? 8000}
+            value={prefs?.charLimit ?? 8000}
             min={1000}
             max={50000}
             step={1000}
-            onChange={(v) => set('note_char_limit', v)}
+            onChange={(v) => setPrefsField('charLimit', v)}
           />
         </Row>
 
-        <motion.label
-          initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.3, ease: 'easeOut', delay: 0.3 }}
-          className="flex flex-col gap-1.5"
-        >
-          <span className="text-sm text-muted">{tr(lang, 'api_key')}</span>
+        <Row label="Server URL" i={12}>
           <input
-            type="password"
+            type="text"
             className={`${field} font-mono`}
-            value={cfg.api_key}
-            onChange={(e) => set('api_key', e.target.value)}
+            value={cfg.server_url ?? ''}
+            onChange={(e) => setCfgField('server_url', e.target.value)}
           />
-        </motion.label>
+        </Row>
 
         <motion.label
           initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
@@ -172,15 +182,22 @@ export function SettingsView({ lang, onClose }: { lang: string; onClose: () => v
           <textarea
             className={`${field} resize-none font-mono leading-relaxed`}
             rows={4}
-            value={cfg.system_prompt}
-            onChange={(e) => set('system_prompt', e.target.value)}
+            value={prefs?.systemPrompt ?? ''}
+            onChange={(e) => setPrefsField('systemPrompt', e.target.value)}
           />
         </motion.label>
       </div>
 
-      <div className="sticky bottom-0 flex gap-2 border-t border-[color:var(--shell-border)] p-3">
+      <div className="sticky bottom-0 flex items-center gap-2 border-t border-[color:var(--shell-border)] p-3">
         <Button variant="accent" onClick={save}>{tr(lang, 'save')}</Button>
         <Button variant="surface" onClick={onClose}>{tr(lang, 'cancel')}</Button>
+        <Button
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => { logout(); emitAuthError() }}
+        >
+          {tr(lang, 'logout')}
+        </Button>
       </div>
     </div>
   )

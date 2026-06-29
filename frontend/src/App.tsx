@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Window } from '@wailsio/runtime'
 import { motion } from 'motion/react'
-import { ChatService, ConfigService } from '../bindings/gix/internal/app'
+import { ConfigService } from '../bindings/gix/internal/app'
+import { ChatService, setBaseURL } from './api/services'
 import { onWindowShown, onAlertFired, onAlertOpen } from './lib/events'
+import { LoginView } from './views/LoginView'
+import { useSession } from './lib/useSession'
 
 import { frostColor } from './lib/frost'
 import { InputBar } from './components/InputBar'
@@ -34,6 +37,7 @@ export default function App() {
   const [nonce, setNonce] = useState(0) // bumped on every window show to replay the enter animation
   const [revealKey, setRevealKey] = useState(0)
   const [pendingNoteId, setPendingNoteId] = useState<number | null>(null)
+  const { authed, setAuthed, ready } = useSession()
 
   const rootRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -68,6 +72,7 @@ export default function App() {
     langRef.current = c.language // sync now so an awaiting command sees it immediately
     setLang(c.language); setTheme(c.theme)
     if (typeof c.opacity === 'number') setOpacity(c.opacity)
+    if (c.server_url) setBaseURL(c.server_url)
   }).catch(() => {})
   useEffect(() => { loadCfg() }, [])
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
@@ -144,7 +149,7 @@ export default function App() {
       const now = Date.now()
       const double = now - last < 500
       last = now
-      if (double) { ChatService.Cancel(); Window.Hide(); return }
+      if (double) { ChatService.cancel(); Window.Hide(); return }
       if (view !== 'chat') { setView('chat'); setPendingNoteId(null) }
     }
     window.addEventListener('keydown', onKey)
@@ -152,6 +157,7 @@ export default function App() {
   }, [view])
 
   const send = () => {
+    if (streaming) return // block a second prompt while the previous answer streams
     const text = input.trim()
     if (!text) return
     historyRef.current = recordPrompt(historyRef.current, text)
@@ -162,8 +168,33 @@ export default function App() {
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '', pending: true }])
     setRevealKey((k) => k + 1)
     setStreaming(true)
-    ChatService.Send(text)
+    ChatService.send(text)
     setInput('')
+  }
+
+  // Enquanto o cofre hidrata (assíncrono), não renderiza nada — a janela está
+  // escondida no boot, então isso é invisível e evita piscar a tela de login.
+  if (!ready) return null
+
+  // Sem sessão, a paleta inteira dá lugar à tela de login (mesmo shell fosco e
+  // mesmo rootRef, p/ o useWindowFit dimensionar a janela ao formulário).
+  if (!authed) {
+    return (
+      <motion.div
+        ref={rootRef}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col overflow-hidden rounded-xl text-fg"
+        style={{
+          maxHeight: maxH,
+          background: shellBg,
+          ['--shell-bg' as any]: shellBg,
+          boxShadow: 'var(--shell-shadow)',
+        }}
+      >
+        <LoginView lang={lang} onAuthed={() => setAuthed(true)} />
+      </motion.div>
+    )
   }
 
   const bar = analyzeBar(input)

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Note } from '../../bindings/gix/internal/db'
+import type { Note } from '../api/types'
 import { Button } from '../components/Button'
 import { addTags } from '../lib/tags'
 import { tr } from '../i18n'
@@ -29,11 +29,11 @@ export function NoteEditor({
   onSave: (title: string, content: string, tags: string[], charLimit: number) => void
   onCancel: () => void
 }) {
-  const [title, setTitle] = useState(note.Title)
-  const [content, setContent] = useState(note.Content)
-  const [tags, setTags] = useState<string[]>(note.Tags ?? [])
+  const [title, setTitle] = useState(note.title)
+  const [content, setContent] = useState(note.content)
+  const [tags, setTags] = useState<string[]>(note.tags ?? [])
   const [tagInput, setTagInput] = useState('')
-  const [charLimit, setCharLimit] = useState(note.CharLimit ?? 0)
+  const [charLimit, setCharLimit] = useState(note.charLimit ?? 0)
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
@@ -44,10 +44,10 @@ export function NoteEditor({
   const over = effectiveLimit > 0 && charCount > effectiveLimit
 
   const dirty =
-    title !== note.Title ||
-    content !== note.Content ||
-    charLimit !== (note.CharLimit ?? 0) ||
-    !sameTags(tags, note.Tags ?? [])
+    title !== note.title ||
+    content !== note.content ||
+    charLimit !== (note.charLimit ?? 0) ||
+    !sameTags(tags, note.tags ?? [])
 
   useEffect(() => {
     titleRef.current?.focus()

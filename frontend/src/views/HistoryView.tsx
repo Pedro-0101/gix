@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
-import { HistoryService } from '../../bindings/gix/internal/app'
+import { HistoryService } from '../api/services'
 import { MessageCard } from '../components/MessageCard'
 import { Button } from '../components/Button'
 import { tr } from '../i18n'
@@ -20,12 +20,12 @@ export function HistoryView({ lang, onClose }: { lang: string; onClose: () => vo
   const [detail, setDetail] = useState<any[]>([])
   const [activeId, setActiveId] = useState<any>(null)
 
-  const reload = () => HistoryService.List().then((c) => setConvs(c ?? []))
+  const reload = () => HistoryService.list().then((c) => setConvs(c ?? []))
   useEffect(() => { reload() }, [])
 
   const open = (id: any) => {
     setActiveId(id)
-    HistoryService.Messages(id).then((m) => setDetail(m ?? []))
+    HistoryService.messages(id).then((m) => setDetail(m ?? []))
   }
 
   return (
@@ -46,10 +46,10 @@ export function HistoryView({ lang, onClose }: { lang: string; onClose: () => vo
           )}
           <div className="space-y-0.5">
             {convs.map((c, i) => {
-              const active = activeId === c.ID
+              const active = activeId === c.id
               return (
                 <motion.div
-                  key={c.ID}
+                  key={c.id}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25, ease: 'easeOut', delay: Math.min(i * 0.03, 0.2) }}
@@ -58,14 +58,14 @@ export function HistoryView({ lang, onClose }: { lang: string; onClose: () => vo
                   }`}
                 >
                   <button
-                    onClick={() => open(c.ID)}
+                    onClick={() => open(c.id)}
                     className="min-w-0 flex-1 cursor-pointer truncate py-2 text-left text-sm outline-none"
                   >
-                    {c.Title}
+                    {c.title}
                   </button>
                   <button
-                    onClick={() => HistoryService.Delete(c.ID).then(() => {
-                      if (activeId === c.ID) { setDetail([]); setActiveId(null) }
+                    onClick={() => HistoryService.delete(c.id).then(() => {
+                      if (activeId === c.id) { setDetail([]); setActiveId(null) }
                       reload()
                     })}
                     aria-label={tr(lang, 'cancel')}
@@ -81,8 +81,8 @@ export function HistoryView({ lang, onClose }: { lang: string; onClose: () => vo
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 selectable">
         {detail.map((m, i) => (
-          <MessageCard key={i} role={m.Role === 'user' ? 'user' : 'assistant'} content={m.Content}
-            label={m.Role === 'user' ? tr(lang, 'you') : tr(lang, 'ai')} />
+          <MessageCard key={i} role={m.role === 'user' ? 'user' : 'assistant'} content={m.content}
+            label={m.role === 'user' ? tr(lang, 'you') : tr(lang, 'ai')} />
         ))}
       </div>
     </div>

@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
+	"gix/internal/app/winnotify"
 	"gix/internal/config"
 	"gix/internal/hotkey"
 )
@@ -73,6 +74,10 @@ func Run(assets fs.FS, trayIcon []byte) error {
 	// para o frontend não guardar segredo em localStorage.
 	tokenSvc := NewTokenService()
 
+	// Agendador de alertas no SO: arma toasts agendados do Windows (no-op em
+	// outras plataformas) para o lembrete disparar com o app fechado/offline.
+	alertSchedSvc := NewAlertSchedulerService(winnotify.New())
+
 	wailsApp = application.New(application.Options{
 		Name:        "gix",
 		Description: "gix — overlay de chat com IA",
@@ -80,6 +85,7 @@ func Run(assets fs.FS, trayIcon []byte) error {
 			application.NewService(cfgSvc),
 			application.NewService(notifSvc),
 			application.NewService(tokenSvc),
+			application.NewService(alertSchedSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

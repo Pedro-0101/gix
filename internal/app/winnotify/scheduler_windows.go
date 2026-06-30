@@ -15,7 +15,9 @@ import (
 )
 
 // aumid deve casar com o AppUserModelID que o instalador registra.
-const aumid = "com.gix.app"
+// Valor extraído de build/config.yml (productIdentifier) e
+// build/windows/wails.exe.manifest (assemblyIdentity name).
+const aumid = "com.pedro0101.gix"
 
 // winRTEpochOffset: ticks de 100ns entre 1601-01-01 (WinRT) e 1970-01-01 (Unix).
 const winRTEpochOffset = int64(11644473600) * 1e7

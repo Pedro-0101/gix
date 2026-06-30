@@ -68,10 +68,10 @@ export default function App() {
   // Opacidade or the Settings slider. See lib/frost.ts.
   const shellBg = frostColor(theme, opacity)
 
-  const loadCfg = () => ConfigService.Get().then((c: any) => {
+  const loadCfg = () => ConfigService.Get().then((c) => {
+    if (!c) return // config ausente (primeiro boot): mantém os defaults
     langRef.current = c.language // sync now so an awaiting command sees it immediately
-    setLang(c.language); setTheme(c.theme)
-    if (typeof c.opacity === 'number') setOpacity(c.opacity)
+    setLang(c.language); setTheme(c.theme); setOpacity(c.opacity)
     if (c.server_url) setBaseURL(c.server_url)
   }).catch(() => {})
   useEffect(() => { loadCfg() }, [])
@@ -131,7 +131,7 @@ export default function App() {
     lastMsg && lastMsg.role === 'assistant' && !lastMsg.pending && !lastMsg.instant ? lastMsg.content : ''
   const { shown, revealing } = useReveal(activeTarget, { done: !streaming, resetKey: revealKey })
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' }) }, [msgs, shown, streaming]) // 'auto' no streaming: suave reiniciaria a cada delta e nunca chegaria ao fim
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: revealing ? 'auto' : 'smooth' }) }, [msgs, shown, revealing]) // 'auto' enquanto revela: suave reiniciaria a cada frame e nunca chegaria ao fim
 
   // Auto-grow the input up to ~5 lines.
   useEffect(() => {

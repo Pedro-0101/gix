@@ -23,24 +23,24 @@ describe('surfaced set', () => {
 describe('syncAlertSchedule', () => {
   beforeEach(() => vi.restoreAllMocks())
 
-  it('invoca listFn e resolve sem erros', async () => {
+  it('mapeia e encaminha corretamente, descartando campos extras', async () => {
     const listFn = vi.fn().mockResolvedValue([
+      { id: 1, message: 'teste', fireAt: '2026-06-30T10:00:00Z', status: 'active', extra: 'ignorado' },
+    ])
+    const reconcileFn = vi.fn().mockResolvedValue(undefined)
+    await expect(schedule.syncAlertSchedule(listFn, reconcileFn)).resolves.toBeUndefined()
+    expect(listFn).toHaveBeenCalledOnce()
+    expect(reconcileFn).toHaveBeenCalledOnce()
+    expect(reconcileFn).toHaveBeenCalledWith([
       { id: 1, message: 'teste', fireAt: '2026-06-30T10:00:00Z', status: 'active' },
     ])
-    await expect(schedule.syncAlertSchedule(listFn)).resolves.toBeUndefined()
-    expect(listFn).toHaveBeenCalledOnce()
   })
 
-  it('chama listFn com os campos corretos e resolve para undefined', async () => {
-    const item = { id: 2, message: 'lembrete', fireAt: '2026-07-01T08:00:00Z', status: 'active', extra: 'ignorado' }
-    const listFn = vi.fn().mockResolvedValue([item])
-    const result = await schedule.syncAlertSchedule(listFn)
-    expect(listFn).toHaveBeenCalledOnce()
-    expect(result).toBeUndefined()
-  })
-
-  it('engole listFn rejeitada', async () => {
+  it('engole listFn rejeitada e não chama reconcileFn', async () => {
     const listFn = vi.fn().mockRejectedValue(new Error('falha de rede'))
-    await expect(schedule.syncAlertSchedule(listFn)).resolves.toBeUndefined()
+    const reconcileFn = vi.fn().mockResolvedValue(undefined)
+    await expect(schedule.syncAlertSchedule(listFn, reconcileFn)).resolves.toBeUndefined()
+    expect(listFn).toHaveBeenCalledOnce()
+    expect(reconcileFn).not.toHaveBeenCalled()
   })
 })

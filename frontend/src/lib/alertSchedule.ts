@@ -72,12 +72,14 @@ export function tap<T>(p: Promise<T>, fn: () => void): Promise<T> {
 
 // syncAlertSchedule busca a lista via listFn e reconcilia o agendamento no SO.
 // Recebe listFn por parâmetro para evitar import circular (alertSchedule ← services).
+// reconcileFn é injetável para permitir testes; padrão é a função módulo reconcile.
 export async function syncAlertSchedule(
   listFn: () => Promise<{ id: number; message: string; fireAt: string; status: string }[]>,
+  reconcileFn: (alerts: ScheduledAlertInput[]) => Promise<void> = reconcile,
 ): Promise<void> {
   try {
     const alerts = await listFn()
-    await reconcile(alerts.map((a) => ({ id: a.id, message: a.message, fireAt: a.fireAt, status: a.status })))
+    await reconcileFn(alerts.map((a) => ({ id: a.id, message: a.message, fireAt: a.fireAt, status: a.status })))
   } catch {
     /* best-effort */
   }

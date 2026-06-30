@@ -23,7 +23,7 @@ import {
   emitChatUsage,
   emitNoteProposed,
 } from '../lib/events'
-import { cancelOne, keyOf, markSurfaced, syncAlertSchedule, tap } from '../lib/alertSchedule'
+import { cancelOne, syncAlertSchedule, tap } from '../lib/alertSchedule'
 import type {
   Alert,
   AlertProposal,
@@ -258,10 +258,8 @@ export function startPush(): void {
             if (eventName !== 'alert') return
             const d = JSON.parse(data) as Delivery
             emitAlertFired({ id: d.alertId ?? 0, message: d.message, noteId: d.noteId })
-            if (d.alertId) {
-              markSurfaced(keyOf(d.alertId, d.fireAt))
-              void cancelOne(d.alertId)
-            }
+            // Push assumiu esta ocorrência: desarma o toast do SO p/ não duplicar.
+            if (d.alertId) void cancelOne(d.alertId)
             // Toast nativo: best-effort (o serviço pode não estar registrado).
             try { showDeliveryToast(d) } catch { /* sem toast, segue */ }
           },

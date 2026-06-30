@@ -8,6 +8,6 @@ type noopNotifier struct{}
 
 func New() Notifier { return noopNotifier{} }
 
-func (noopNotifier) Arm(Occurrence) error          { return nil }
-func (noopNotifier) CancelByAlert(int64) error      { return nil }
-func (noopNotifier) ListArmed() ([]Key, error)      { return nil, nil }
+func (noopNotifier) Arm(Occurrence) error      { return nil }
+func (noopNotifier) CancelByAlert(int64) error { return nil }
+func (noopNotifier) ListArmed() ([]Key, error) { return nil, nil }

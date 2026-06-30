@@ -288,9 +288,11 @@ async function showDeliveryToast(d: Delivery) {
     const mod: any = await import('../../bindings/github.com/wailsapp/wails/v3/pkg/services/notifications')
     const send = mod?.NotificationService?.SendNotification
     if (send) {
-      send({ title: 'gix', body: d.message })
+      send({ id: `gix-alert-${d.deliveryId}`, title: 'gix', body: d.message })
     }
-  } catch { /* serviço indisponível — push segue só como card no chat */ }
+  } catch (e) {
+    console.error('services.showDeliveryToast:', e)
+  }
 }
 
 export { getRefreshToken }

@@ -56,12 +56,16 @@ export function useProposals({ setStreaming, setMsgs, commandContextRef }: Deps)
         ],
       })
       if (ok !== 'yes') return
-      const res = await ctx.alerts.createProposed({ message: p.message, fireAt: p.fireAt, recurrence: p.recurrence })
-      if (res.status === 'created') {
-        const w = formatFireAt(res.fireAtLocal, ctx.lang)
-        const r = recurrenceLabel(ctx.lang, res.recurrence)
-        const sfx = [w, r].filter(Boolean).join(' · ')
-        ctx.emitSystemMessage(`${tr(ctx.lang, 'alert_created')} **${res.message}**${sfx ? `  _${sfx}_` : ''}`)
+      try {
+        const res = await ctx.alerts.createProposed({ message: p.message, fireAt: p.fireAt, recurrence: p.recurrence })
+        if (res.status === 'created') {
+          const w = formatFireAt(res.fireAtLocal, ctx.lang)
+          const r = recurrenceLabel(ctx.lang, res.recurrence)
+          const sfx = [w, r].filter(Boolean).join(' · ')
+          ctx.emitSystemMessage(`${tr(ctx.lang, 'alert_created')} **${res.message}**${sfx ? `  _${sfx}_` : ''}`)
+        }
+      } catch {
+        ctx.emitSystemMessage(tr(ctx.lang, 'alert_error'))
       }
     })
     return () => { offNote(); offAlert() }

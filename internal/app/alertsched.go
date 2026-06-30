@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"time"
 
 	"gix/internal/app/winnotify"
@@ -31,7 +32,7 @@ func NewAlertSchedulerService(n winnotify.Notifier) *AlertSchedulerService {
 // desired converte um ScheduledAlert numa Occurrence futura, ou (zero,false) se
 // não-ativo ou no passado.
 func desired(a ScheduledAlert) (winnotify.Occurrence, bool) {
-	if a.Status != "active" {
+	if !strings.EqualFold(a.Status, "active") {
 		return winnotify.Occurrence{}, false
 	}
 	t, err := time.Parse(time.RFC3339, a.FireAt)

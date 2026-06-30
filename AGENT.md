@@ -12,6 +12,24 @@ notes, runs alerts, and tracks token cost. Backend is **Go + Wails v3**
 TypeScript + Tailwind v4** embedded as web assets. See `README.md` for the user
 guide and full directory map.
 
+## Backend API docs
+
+The multi-channel backend lives in `gix-server` (`../gix-server`); `gix` is a
+thin channel over it. The **source of truth for the HTTP API is the live
+endpoint `GET /v1/docs`** (public, no auth) — query it instead of guessing or
+relying on stale notes. It returns JSON with:
+
+- `service` — name and version.
+- `auth` — how to authenticate (Bearer token from `/v1/auth/login` or signup).
+- `rateLimit` — limits per route type.
+- `endpoints[]` — each with `method`, `path`, `description`, `auth`, `body`
+  (fields + types), `query` (params), `returns` (status + format), `streaming`
+  (if SSE), and `notes`.
+
+It documents 34 endpoints spanning auth, notes, search, AI, alerts,
+conversations, models, preferences, chat SSE, and push SSE (the `/v1/docs`
+route itself is not listed in its own output).
+
 ## Build / test / run
 
 - **Run / dev:** `wails3 dev` (hot reload). Build: `wails3 build`. Installer:

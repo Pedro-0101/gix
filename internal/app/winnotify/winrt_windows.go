@@ -30,19 +30,6 @@ const (
 	hrChangedMode = 0x80010106 // RPC_E_CHANGED_MODE: outro apartment já escolhido
 )
 
-// initErr captura um HRESULT inesperado do RoInitialize feito no load do pacote,
-// para diagnóstico (S_FALSE/RPC_E_CHANGED_MODE não são considerados erro).
-var initErr error
-
-func init() {
-	// O apartment COM é por-thread; aqui apenas inicializamos o thread de carga do
-	// pacote em MTA. Cada método público re-garante o COM no seu próprio
-	// goroutine-thread via ensureCOM(). Não engolimos o HRESULT: S_FALSE e
-	// RPC_E_CHANGED_MODE (apartment já escolhido, ex.: STA do Wails) são benignos;
-	// qualquer outro fica em initErr para diagnóstico.
-	initErr = benignInitHR(ole.RoInitialize(rtMTA))
-}
-
 // benignInitHR descarta os HRESULTs de inicialização que não são falhas reais:
 // S_FALSE (já inicializado) e RPC_E_CHANGED_MODE (apartment diferente já
 // escolhido para o thread). Qualquer outro erro é propagado.

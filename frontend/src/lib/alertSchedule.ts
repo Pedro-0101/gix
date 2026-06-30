@@ -20,7 +20,8 @@ async function svc(): Promise<any> {
   try {
     const mod: any = await import('../../bindings/gix/internal/app')
     return mod?.AlertSchedulerService ?? null
-  } catch {
+  } catch (e) {
+    console.error('alertSchedule.svc import:', e)
     return null
   }
 }
@@ -28,24 +29,24 @@ async function svc(): Promise<any> {
 export async function reconcile(alerts: ScheduledAlertInput[]): Promise<void> {
   try {
     await (await svc())?.Reconcile?.(alerts)
-  } catch {
-    /* best-effort: o push do servidor segue cobrindo */
+  } catch (e) {
+    console.error('alertSchedule.reconcile:', e)
   }
 }
 
 export async function armOne(a: ScheduledAlertInput): Promise<void> {
   try {
     await (await svc())?.ArmOne?.(a)
-  } catch {
-    /* best-effort */
+  } catch (e) {
+    console.error('alertSchedule.armOne:', e)
   }
 }
 
 export async function cancelOne(alertId: number): Promise<void> {
   try {
     await (await svc())?.CancelOne?.(alertId)
-  } catch {
-    /* best-effort */
+  } catch (e) {
+    console.error('alertSchedule.cancelOne:', e)
   }
 }
 
@@ -66,7 +67,7 @@ export async function syncAlertSchedule(
   try {
     const alerts = await listFn()
     await reconcileFn(alerts.map((a) => ({ id: a.id, message: a.message, fireAt: a.fireAt, status: a.status })))
-  } catch {
-    /* best-effort */
+  } catch (e) {
+    console.error('alertSchedule.syncAlertSchedule:', e)
   }
 }

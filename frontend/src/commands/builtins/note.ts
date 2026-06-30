@@ -113,14 +113,22 @@ async function maybeAlert(ctx: CommandContext, text: string, noteId: number, ale
       ],
     })
     if (ok === 'yes') {
-      emitAlertCreated(ctx, await ctx.alerts.createProposed({
-        message: alert.message, fireAt: alert.fireAt, recurrence: alert.recurrence, noteId,
-      }))
+      try {
+        emitAlertCreated(ctx, await ctx.alerts.createProposed({
+          message: alert.message, fireAt: alert.fireAt, recurrence: alert.recurrence, noteId,
+        }))
+      } catch {
+        ctx.emitSystemMessage(tr(ctx.lang, 'alert_error'))
+      }
     }
     return
   }
   if (/crie\s+um\s+(alerta|lembrete|alarme)/i.test(text)) {
-    emitAlertCreated(ctx, await ctx.alerts.create(text))
+    try {
+      emitAlertCreated(ctx, await ctx.alerts.create(text))
+    } catch {
+      ctx.emitSystemMessage(tr(ctx.lang, 'alert_error'))
+    }
   }
 }
 

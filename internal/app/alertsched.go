@@ -17,8 +17,9 @@ type ScheduledAlert struct {
 
 // AlertSchedulerService arma/cancela toasts agendados do Windows espelhando os
 // alertas do servidor. O diff (desejado vs armado) é testável; o I/O nativo fica
-// atrás de winnotify.Notifier. Erros do Notifier são engolidos por chamador —
-// agendar é best-effort e nunca bloqueia o fluxo de alertas.
+// atrás de winnotify.Notifier. Os erros do Notifier são repassados ao chamador;
+// cabe a ele decidir se aborta ou continua — agendar é best-effort e não deve
+// bloquear o fluxo de alertas.
 type AlertSchedulerService struct {
 	n winnotify.Notifier
 }

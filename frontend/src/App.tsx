@@ -131,7 +131,7 @@ export default function App() {
     lastMsg && lastMsg.role === 'assistant' && !lastMsg.pending && !lastMsg.instant ? lastMsg.content : ''
   const { shown, revealing } = useReveal(activeTarget, { done: !streaming, resetKey: revealKey })
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, shown])
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' }) }, [msgs, shown, streaming]) // 'auto' no streaming: suave reiniciaria a cada delta e nunca chegaria ao fim
 
   // Auto-grow the input up to ~5 lines.
   useEffect(() => {

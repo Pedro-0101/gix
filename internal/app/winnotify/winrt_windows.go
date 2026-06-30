@@ -5,7 +5,9 @@
 package winnotify
 
 import (
+	"errors"
 	"fmt"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -17,10 +19,20 @@ import (
 const (
 	guidXmlDocumentIO     = "6cd0e74e-ee65-4489-9ebf-ca43e87ba637" // IXmlDocumentIO
 	guidToastMgrStatics   = "50ac103f-d235-4598-bbef-98fe4d1a3ad4" // IToastNotificationManagerStatics
-	guidToastNotifier     = "75927b93-03f3-41ec-91d3-6e5bac1b38e7" // IToastNotifier
 	guidSchedToastFactory = "e7bed191-0bb9-4189-8394-31761b476fd7" // IScheduledToastNotificationFactory
 	guidSchedToast2       = "a66ea09c-31b4-43b0-b5dd-7a40e85363b1" // IScheduledToastNotification2
 )
+
+// HRESULTs de inicialização de apartment COM tratados como benignos.
+const (
+	rtMTA         = 1          // RO_INIT_MULTITHREADED
+	hrSFalse      = 0x00000001 // S_FALSE: COM já inicializado neste thread
+	hrChangedMode = 0x80010106 // RPC_E_CHANGED_MODE: outro apartment já escolhido
+)
+
+// initErr captura um HRESULT inesperado do RoInitialize feito no load do pacote,
+// para diagnóstico (S_FALSE/RPC_E_CHANGED_MODE não são considerados erro).
+var initErr error
 
 type iXmlDocumentIO struct{ ole.IInspectable }
 type iXmlDocumentIOVtbl struct {
@@ -105,8 +117,42 @@ type schedToastObj struct{ ole.IUnknown } // IScheduledToastNotification*
 type xmlDocObj struct{ ole.IUnknown }     // IXmlDocument*
 
 func init() {
-	// Inicializa WinRT (MTA); erro ignorado — Wails pode já ter inicializado.
-	_ = ole.RoInitialize(1)
+	// O apartment COM é por-thread; aqui apenas inicializamos o thread de carga do
+	// pacote em MTA. Cada método público re-garante o COM no seu próprio
+	// goroutine-thread via ensureCOM(). Não engolimos o HRESULT: S_FALSE e
+	// RPC_E_CHANGED_MODE (apartment já escolhido, ex.: STA do Wails) são benignos;
+	// qualquer outro fica em initErr para diagnóstico.
+	initErr = benignInitHR(ole.RoInitialize(rtMTA))
+}
+
+// benignInitHR descarta os HRESULTs de inicialização que não são falhas reais:
+// S_FALSE (já inicializado) e RPC_E_CHANGED_MODE (apartment diferente já
+// escolhido para o thread). Qualquer outro erro é propagado.
+func benignInitHR(err error) error {
+	if err == nil {
+		return nil
+	}
+	var oe *ole.OleError
+	if errors.As(err, &oe) {
+		switch uint32(oe.Code()) {
+		case hrSFalse, hrChangedMode:
+			return nil
+		}
+	}
+	return err
+}
+
+// ensureCOM trava o goroutine no seu thread de SO e garante que o COM/WinRT
+// esteja inicializado nesse thread — WinRT exige apartment por-thread e
+// Arm/Cancel/List podem rodar em threads arbitrários do runtime. Inicializa em
+// MTA tolerando apartments já escolhidos. Mantemos o COM inicializado pela vida
+// do processo (sem CoUninitialize): é o estado desejado para um app desktop de
+// longa duração e evita derrubar o apartment do thread enquanto há objetos vivos.
+// Devolve a função de limpeza que destrava o thread (chame com defer).
+func ensureCOM() func() {
+	runtime.LockOSThread()
+	_ = benignInitHR(ole.RoInitialize(rtMTA))
+	return runtime.UnlockOSThread
 }
 
 // getNotifier obtém o IToastNotifier para o aumid registrado.
@@ -118,6 +164,7 @@ func getNotifier() (*iToastNotifier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("RoGetActivationFactory ToastNotificationManager: %w", err)
 	}
+	defer factory.Release() // fábrica de ativação não precisa sobreviver à chamada
 	statics := (*iToastMgrStatics)(unsafe.Pointer(factory))
 
 	aumidH, err := ole.NewHString(aumid)
@@ -176,6 +223,7 @@ func createScheduledToast(doc *xmlDocObj, dt foundation.DateTime) (*schedToastOb
 	if err != nil {
 		return nil, fmt.Errorf("RoGetActivationFactory ScheduledToastNotification: %w", err)
 	}
+	defer factory.Release() // fábrica de ativação não precisa sobreviver à chamada
 	f := (*iSchedToastFactory)(unsafe.Pointer(factory))
 
 	var rawToast unsafe.Pointer

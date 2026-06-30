@@ -27,14 +27,17 @@ func New() Notifier { return winNotifier{} }
 
 // Arm agenda um toast nativo que dispara em occ.FireAt, mesmo com o app fechado.
 func (winNotifier) Arm(occ Occurrence) error {
+	defer ensureCOM()()
 	doc, err := newXmlDoc(toastXML(occ.Message))
 	if err != nil {
 		return fmt.Errorf("winnotify.Arm newXmlDoc: %w", err)
 	}
+	defer doc.Release()
 	st, err := createScheduledToast(doc, toDateTime(occ.FireAt))
 	if err != nil {
 		return fmt.Errorf("winnotify.Arm createScheduledToast: %w", err)
 	}
+	defer st.Release()
 	tag := strconv.FormatInt(occ.AlertID, 10)
 	group := strconv.FormatInt(occ.FireAt.Unix(), 10)
 	if err := setTagGroup(st, tag, group); err != nil {
@@ -44,38 +47,50 @@ func (winNotifier) Arm(occ Occurrence) error {
 	if err != nil {
 		return fmt.Errorf("winnotify.Arm getNotifier: %w", err)
 	}
+	defer n.Release()
 	return addToSchedule(n, st)
 }
 
 // CancelByAlert remove todos os toasts agendados para o alertID fornecido.
 func (winNotifier) CancelByAlert(alertID int64) error {
+	defer ensureCOM()()
 	n, err := getNotifier()
 	if err != nil {
 		return fmt.Errorf("winnotify.CancelByAlert getNotifier: %w", err)
 	}
+	defer n.Release()
 	vec, err := scheduledList(n)
 	if err != nil {
 		return err
 	}
+	defer vec.Release()
 	size, err := vecSize(vec)
 	if err != nil {
 		return err
 	}
 	tag := strconv.FormatInt(alertID, 10)
 	for i := uint32(0); i < size; i++ {
-		item, err := vecAt(vec, i)
-		if err != nil {
+		// Corpo em closure para liberar cada item ao fim da iteração (defer dentro
+		// do for acumularia todas as refs até o retorno da função).
+		if err := func() error {
+			item, err := vecAt(vec, i)
+			if err != nil {
+				return err
+			}
+			defer item.Release()
+			t, _, err := getTagGroup(item)
+			if err != nil {
+				return err
+			}
+			if t != tag {
+				return nil
+			}
+			if err := removeFromSchedule(n, item); err != nil {
+				return fmt.Errorf("winnotify.CancelByAlert: %w", err)
+			}
+			return nil
+		}(); err != nil {
 			return err
-		}
-		t, _, err := getTagGroup(item)
-		if err != nil {
-			return err
-		}
-		if t != tag {
-			continue
-		}
-		if err := removeFromSchedule(n, item); err != nil {
-			return fmt.Errorf("winnotify.CancelByAlert: %w", err)
 		}
 	}
 	return nil
@@ -83,31 +98,41 @@ func (winNotifier) CancelByAlert(alertID int64) error {
 
 // ListArmed devolve as chaves de todos os toasts atualmente agendados.
 func (winNotifier) ListArmed() ([]Key, error) {
+	defer ensureCOM()()
 	n, err := getNotifier()
 	if err != nil {
 		return nil, fmt.Errorf("winnotify.ListArmed getNotifier: %w", err)
 	}
+	defer n.Release()
 	vec, err := scheduledList(n)
 	if err != nil {
 		return nil, err
 	}
+	defer vec.Release()
 	size, err := vecSize(vec)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Key, 0, size)
 	for i := uint32(0); i < size; i++ {
-		item, err := vecAt(vec, i)
-		if err != nil {
+		// Corpo em closure para liberar cada item ao fim da iteração.
+		if err := func() error {
+			item, err := vecAt(vec, i)
+			if err != nil {
+				return err
+			}
+			defer item.Release()
+			tag, grp, err := getTagGroup(item)
+			if err != nil {
+				return err
+			}
+			id, _ := strconv.ParseInt(tag, 10, 64)
+			unix, _ := strconv.ParseInt(grp, 10, 64)
+			out = append(out, Key{AlertID: id, FireAtUnix: unix})
+			return nil
+		}(); err != nil {
 			return nil, err
 		}
-		tag, grp, err := getTagGroup(item)
-		if err != nil {
-			return nil, err
-		}
-		id, _ := strconv.ParseInt(tag, 10, 64)
-		unix, _ := strconv.ParseInt(grp, 10, 64)
-		out = append(out, Key{AlertID: id, FireAtUnix: unix})
 	}
 	return out, nil
 }

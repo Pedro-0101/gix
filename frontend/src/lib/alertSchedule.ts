@@ -62,3 +62,23 @@ export async function cancelOne(alertId: number): Promise<void> {
     /* best-effort */
   }
 }
+
+// tap executa fn após a promise resolver com sucesso, retornando a mesma promise.
+// Usado em services.ts para disparar side-effects pós-mutação sem alterar o retorno
+// nem expandir a contagem de linhas do arquivo.
+export function tap<T>(p: Promise<T>, fn: () => void): Promise<T> {
+  return p.then((v) => { fn(); return v })
+}
+
+// syncAlertSchedule busca a lista via listFn e reconcilia o agendamento no SO.
+// Recebe listFn por parâmetro para evitar import circular (alertSchedule ← services).
+export async function syncAlertSchedule(
+  listFn: () => Promise<{ id: number; message: string; fireAt: string; status: string }[]>,
+): Promise<void> {
+  try {
+    const alerts = await listFn()
+    await reconcile(alerts.map((a) => ({ id: a.id, message: a.message, fireAt: a.fireAt, status: a.status })))
+  } catch {
+    /* best-effort */
+  }
+}

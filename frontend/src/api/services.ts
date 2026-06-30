@@ -23,6 +23,7 @@ import {
   emitChatUsage,
   emitNoteProposed,
 } from '../lib/events'
+import { cancelOne, keyOf, markSurfaced, syncAlertSchedule, tap } from '../lib/alertSchedule'
 import type {
   Alert,
   AlertProposal,
@@ -142,22 +143,22 @@ export const AlertsService = {
     return request<Alert[]>('GET', '/v1/alerts')
   },
   create(text: string): Promise<CreateAlertResult> {
-    return request<CreateAlertResult>('POST', '/v1/alerts/parse', { body: { text } })
+    return tap(request<CreateAlertResult>('POST', '/v1/alerts/parse', { body: { text } }), () => { void syncAlertSchedule(AlertsService.list) })
   },
   createProposed(message: string, fireAt: string, recurrence: string, noteId: number | null): Promise<CreateAlertResult> {
-    return request<CreateAlertResult>('POST', '/v1/alerts', { body: { message, fireAt, recurrence, noteId } })
+    return tap(request<CreateAlertResult>('POST', '/v1/alerts', { body: { message, fireAt, recurrence, noteId } }), () => { void syncAlertSchedule(AlertsService.list) })
   },
   createForNote(noteId: number, whenText: string): Promise<CreateAlertResult> {
-    return request<CreateAlertResult>('POST', `/v1/notes/${noteId}/alert`, { body: { text: whenText } })
+    return tap(request<CreateAlertResult>('POST', `/v1/notes/${noteId}/alert`, { body: { text: whenText } }), () => { void syncAlertSchedule(AlertsService.list) })
   },
   done(id: number): Promise<void> {
-    return request<void>('POST', `/v1/alerts/${id}/done`)
+    return tap(request<void>('POST', `/v1/alerts/${id}/done`), () => { void cancelOne(id) })
   },
   cancel(id: number): Promise<void> {
-    return request<void>('POST', `/v1/alerts/${id}/cancel`)
+    return tap(request<void>('POST', `/v1/alerts/${id}/cancel`), () => { void cancelOne(id) })
   },
   snooze(id: number, minutes: number): Promise<void> {
-    return request<void>('POST', `/v1/alerts/${id}/snooze`, { body: { minutes } })
+    return tap(request<void>('POST', `/v1/alerts/${id}/snooze`, { body: { minutes } }), () => { void syncAlertSchedule(AlertsService.list) })
   },
 }
 
@@ -257,6 +258,10 @@ export function startPush(): void {
             if (eventName !== 'alert') return
             const d = JSON.parse(data) as Delivery
             emitAlertFired({ id: d.alertId ?? 0, message: d.message, noteId: d.noteId })
+            if (d.alertId) {
+              markSurfaced(keyOf(d.alertId, d.fireAt))
+              void cancelOne(d.alertId)
+            }
             // Toast nativo: best-effort (o serviço pode não estar registrado).
             try { showDeliveryToast(d) } catch { /* sem toast, segue */ }
           },

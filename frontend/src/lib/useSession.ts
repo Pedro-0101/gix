@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ConfigService } from '../../bindings/gix/internal/app'
-import { isAuthed, loadTokens, setBaseURL, startPush, stopPush } from '../api/services'
+import { AlertsService, isAuthed, loadTokens, setBaseURL, startPush, stopPush } from '../api/services'
 import { onAuthError } from './events'
+import { syncAlertSchedule } from './alertSchedule'
 
 // useSession governa o estado de sessão do desktop: hidrata os tokens do cofre
 // nativo (DPAPI) na inicialização, escuta expiração (onAuthError → volta p/
@@ -30,6 +31,7 @@ export function useSession() {
       if (stopped) return
       if (c.server_url) setBaseURL(c.server_url)
       startPush()
+      void syncAlertSchedule(AlertsService.list)
     }).catch(() => {})
     return () => { stopped = true; stopPush() }
   }, [authed])

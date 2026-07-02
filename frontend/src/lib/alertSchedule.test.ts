@@ -17,11 +17,14 @@ describe('syncAlertSchedule', () => {
     ])
   })
 
-  it('engole listFn rejeitada e não chama reconcileFn', async () => {
+  it('rejeita se listFn falhar e não chama reconcileFn', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const listFn = vi.fn().mockRejectedValue(new Error('falha de rede'))
     const reconcileFn = vi.fn().mockResolvedValue(undefined)
-    await expect(schedule.syncAlertSchedule(listFn, reconcileFn)).resolves.toBeUndefined()
+    await expect(schedule.syncAlertSchedule(listFn, reconcileFn)).rejects.toThrow('falha de rede')
     expect(listFn).toHaveBeenCalledOnce()
     expect(reconcileFn).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalled()
+    consoleSpy.mockRestore()
   })
 })

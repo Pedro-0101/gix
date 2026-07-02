@@ -24,6 +24,7 @@ import {
   emitNoteProposed,
 } from '../lib/events'
 import { cancelOne, syncAlertSchedule, tap } from '../lib/alertSchedule'
+import { NotificationService } from '../../bindings/github.com/wailsapp/wails/v3/pkg/services/notifications'
 import type {
   Alert,
   AlertProposal,
@@ -143,22 +144,40 @@ export const AlertsService = {
     return request<Alert[]>('GET', '/v1/alerts')
   },
   create(text: string): Promise<CreateAlertResult> {
-    return tap(request<CreateAlertResult>('POST', '/v1/alerts/parse', { body: { text } }), () => { void syncAlertSchedule(AlertsService.list) })
+    return tap(request<CreateAlertResult>('POST', '/v1/alerts/parse', { body: { text } }), () => {
+      console.log('[services] alert created via /parse, scheduling...')
+      syncAlertSchedule(AlertsService.list).catch((e) => { console.error('[services] create alert schedule FAILED:', e) })
+    })
   },
   createProposed(message: string, fireAt: string, recurrence: string, noteId: number | null): Promise<CreateAlertResult> {
-    return tap(request<CreateAlertResult>('POST', '/v1/alerts', { body: { message, fireAt, recurrence, noteId } }), () => { void syncAlertSchedule(AlertsService.list) })
+    return tap(request<CreateAlertResult>('POST', '/v1/alerts', { body: { message, fireAt, recurrence, noteId } }), () => {
+      console.log('[services] alert created via createProposed, scheduling...')
+      syncAlertSchedule(AlertsService.list).catch((e) => { console.error('[services] createProposed alert schedule FAILED:', e) })
+    })
   },
   createForNote(noteId: number, whenText: string): Promise<CreateAlertResult> {
-    return tap(request<CreateAlertResult>('POST', `/v1/notes/${noteId}/alert`, { body: { text: whenText } }), () => { void syncAlertSchedule(AlertsService.list) })
+    return tap(request<CreateAlertResult>('POST', `/v1/notes/${noteId}/alert`, { body: { text: whenText } }), () => {
+      console.log('[services] alert created via createForNote, scheduling...')
+      syncAlertSchedule(AlertsService.list).catch((e) => { console.error('[services] createForNote alert schedule FAILED:', e) })
+    })
   },
   done(id: number): Promise<void> {
-    return tap(request<void>('POST', `/v1/alerts/${id}/done`), () => { void cancelOne(id) })
+    return tap(request<void>('POST', `/v1/alerts/${id}/done`), () => {
+      console.log(`[services] alert ${id} done, cancelling schedule...`)
+      cancelOne(id).catch((e) => { console.error(`[services] done cancel ${id} FAILED:`, e) })
+    })
   },
   cancel(id: number): Promise<void> {
-    return tap(request<void>('POST', `/v1/alerts/${id}/cancel`), () => { void cancelOne(id) })
+    return tap(request<void>('POST', `/v1/alerts/${id}/cancel`), () => {
+      console.log(`[services] alert ${id} cancelled, cancelling schedule...`)
+      cancelOne(id).catch((e) => { console.error(`[services] cancel ${id} FAILED:`, e) })
+    })
   },
   snooze(id: number, minutes: number): Promise<void> {
-    return tap(request<void>('POST', `/v1/alerts/${id}/snooze`, { body: { minutes } }), () => { void syncAlertSchedule(AlertsService.list) })
+    return tap(request<void>('POST', `/v1/alerts/${id}/snooze`, { body: { minutes } }), () => {
+      console.log(`[services] alert ${id} snoozed, rescheduling...`)
+      syncAlertSchedule(AlertsService.list).catch((e) => { console.error('[services] snooze alert schedule FAILED:', e) })
+    })
   },
 }
 
@@ -285,11 +304,7 @@ export function stopPush(): void {
 // não existir (ex.: build sem o serviço).
 async function showDeliveryToast(d: Delivery) {
   try {
-    const mod: any = await import('../../bindings/github.com/wailsapp/wails/v3/pkg/services/notifications')
-    const send = mod?.NotificationService?.SendNotification
-    if (send) {
-      send({ id: `gix-alert-${d.deliveryId}`, title: 'gix', body: d.message })
-    }
+    NotificationService.SendNotification({ id: `gix-alert-${d.deliveryId}`, title: 'gix', body: d.message })
   } catch (e) {
     console.error('services.showDeliveryToast:', e)
   }

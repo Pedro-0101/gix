@@ -22,6 +22,8 @@ import { useInteraction } from './lib/useInteraction'
 import { useWindowFit } from './lib/useWindowFit'
 import { useCommandContext } from './lib/useCommandContext'
 import { useProposals } from './lib/useProposals'
+import { useEmptyResponse } from './lib/useEmptyResponse'
+import { useInteractionLog } from './lib/useInteractionLog'
 
 // Must match the Go side (internal/app/shell.go).
 const TOP_MAX_RATIO = 0.6
@@ -57,6 +59,8 @@ export default function App() {
     interaction, setInteraction, choose, prompt, slider,
     pickChoice, submitPrompt, submitSlider, reset,
   } = useInteraction({ input, setInput, setMsgs, setView, taRef })
+
+  const { log: debugLog, clear: debugClear, paused: debugPaused, setPaused: setDebugPaused } = useInteractionLog()
 
   const expanded = view !== 'chat' || msgs.length > 0 || interaction != null
   const maxH = Math.round((window.screen?.availHeight || 900) * TOP_MAX_RATIO)
@@ -110,6 +114,7 @@ export default function App() {
   // Proposed note/alert wiring: tool-call results from the AI propose creations;
   // the shell asks the user to confirm before saving them.
   useProposals({ setStreaming, setMsgs, commandContextRef })
+  useEmptyResponse({ setStreaming, setMsgs, commandContextRef })
 
   // Each time the window is shown, reset to a clean bar and focus it.
   useEffect(() => {
@@ -292,6 +297,11 @@ export default function App() {
           onReloadCfgClose={() => { loadCfg(); setView('chat') }}
           onSelectNote={(id) => { setPendingNoteId(id); setView('notes') }}
           onCloseAlerts={() => { setAlertFocusId(null); setView('chat') }}
+          debugLog={debugLog}
+          debugPaused={debugPaused}
+          onDebugTogglePause={() => setDebugPaused((p) => !p)}
+          onDebugClear={debugClear}
+          onDebugClose={() => setView('chat')}
         />
       )}
     </motion.div>

@@ -11,6 +11,7 @@ import { alertCommand } from './builtins/alert'
 import { summarizeCommand } from './builtins/summarize'
 import { tidyCommand } from './builtins/tidy'
 import { graphCommand } from './builtins/graph'
+import { debugCommand } from './builtins/debug'
 
 // The single source of truth. New commands — including future user-defined ones —
 // are added here (or pushed at runtime); the dispatcher and /help read this list,
@@ -28,6 +29,7 @@ export const commands: Command[] = [
   historyCommand,
   helpCommand,
   graphCommand,
+  debugCommand,
 ]
 
 // Resolves raw bar input to a command plus its argument. A bare slash token

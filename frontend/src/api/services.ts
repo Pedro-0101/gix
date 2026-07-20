@@ -19,9 +19,11 @@ import {
   emitAlertProposed,
   emitChatDelta,
   emitChatDone,
+  emitChatEmptyResponse,
   emitChatError,
   emitChatUsage,
   emitNoteProposed,
+  emitUserMsg,
 } from '../lib/events'
 import { cancelOne, syncAlertSchedule, tap } from '../lib/alertSchedule'
 import { NotificationService } from '../../bindings/github.com/wailsapp/wails/v3/pkg/services/notifications'
@@ -205,6 +207,7 @@ export const ChatService = {
   async send(text: string, conversationId = 0): Promise<void> {
     chatController?.abort()
     chatController = new AbortController()
+    emitUserMsg(text)
     try {
       await streamSSE(
         '/v1/chat',
@@ -214,7 +217,12 @@ export const ChatService = {
           if (!ev) return
           switch (ev.type) {
             case 'delta': emitChatDelta(ev.delta); break
-            case 'done': emitChatDone(ev.content); break
+            case 'done':
+              emitChatDone(ev.content)
+              if (!ev.content) {
+                emitChatEmptyResponse(text)
+              }
+              break
             case 'error': emitChatError(ev.err); break
             case 'usage': emitChatUsage(ev.usage); break
             case 'note_proposed':

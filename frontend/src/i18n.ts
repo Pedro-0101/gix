@@ -139,7 +139,11 @@ const pt: Record<string, string> = {
   login_offline: 'Servidor indisponível. Confira a URL nas configurações.',
   password_too_short: 'A senha precisa de ao menos 8 caracteres.',
   logout: 'Sair da conta',
+  empty_response_title: 'A inteligência artificial retornou resposta vazia {n} vezes consecutivas. Deseja reenviar novamente?',
+  empty_retrying: 'Resposta vazia, reenviando mensagem',
+  cmd_debug_desc: 'Abre o log de depuração das interações com a IA',
 }
+
 
 const en: Record<string, string> = {
   settings: 'Settings',
@@ -282,7 +286,11 @@ const en: Record<string, string> = {
   login_offline: 'Server unavailable. Check the URL in settings.',
   password_too_short: 'Password must be at least 8 characters.',
   logout: 'Sign out',
+  empty_response_title: 'The AI returned an empty response {n} times in a row. Resend again?',
+  empty_retrying: 'Empty response, resending message',
+  cmd_debug_desc: 'Opens the debug log of AI interactions',
 }
+
 
 export function tr(lang: string, key: string): string {
   const m = lang === 'en' ? en : pt

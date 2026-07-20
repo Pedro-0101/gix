@@ -7,6 +7,7 @@ import { MessageCard } from "./MessageCard"
 import { ChoiceCard, ChoiceSummary } from "./ChoiceCard"
 import { Slider } from "./Slider"
 import { SettingsView } from "../views/SettingsView"
+import { DebugView } from "../views/DebugView"
 import { HistoryView } from "../views/HistoryView"
 import { NotesView } from "../views/NotesView"
 import { SearchView } from "../views/SearchView"
@@ -42,6 +43,12 @@ type Props = {
   onReloadCfgClose: () => void
   onSelectNote: (id: number) => void
   onCloseAlerts: () => void
+  // debug view
+  debugLog: import('../lib/useInteractionLog').LogEntry[]
+  debugPaused: boolean
+  onDebugTogglePause: () => void
+  onDebugClear: () => void
+  onDebugClose: () => void
 }
 
 // ShellPanel is the panel that expands downward below the bar: the chat
@@ -130,6 +137,15 @@ export function ShellPanel(p: Props) {
       {p.view === "search" && p.searchState && <SearchView lang={p.lang} state={p.searchState} onClose={p.onCloseToChat} />}
       {p.view === "graph" && <GraphView lang={p.lang} onClose={p.onCloseToChat} onSelectNote={p.onSelectNote} />}
       {p.view === "alerts" && <AlertsView lang={p.lang} focusId={p.alertFocusId} onClose={p.onCloseAlerts} />}
+      {p.view === "debug" && (
+        <DebugView
+          log={p.debugLog}
+          paused={p.debugPaused}
+          onTogglePause={p.onDebugTogglePause}
+          onClear={p.onDebugClear}
+          onClose={p.onDebugClose}
+        />
+      )}
     </motion.div>
   )
 }

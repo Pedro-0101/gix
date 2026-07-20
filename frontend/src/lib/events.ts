@@ -21,17 +21,21 @@ function subscribe<T>(name: string, cb: Handler<T>): () => void {
 
 // --- Chat (produzido pelo consumer SSE de POST /v1/chat em services.ts) ---
 
+export const emitUserMsg = (text: string) => dispatch('chat:user_msg', text)
 export const emitChatDelta = (delta: string) => dispatch('chat:delta', delta)
 export const emitChatDone = (content: string) => dispatch('chat:done', { content })
 export const emitChatError = (msg: string) => dispatch('chat:error', msg)
 export const emitChatUsage = (u: Usage) => dispatch('chat:usage', u)
+export const emitChatEmptyResponse = (text: string) => dispatch('chat:empty_response', text)
 export const emitNoteProposed = (n: { title: string; content: string; tags: string[] }) => dispatch('note:proposed', n)
 export const emitAlertProposed = (a: AlertProposal) => dispatch('alert:proposed', a)
 
+export const onUserMsg = (cb: (text: string) => void) => subscribe<string>('chat:user_msg', cb)
 export const onChatDelta = (cb: (delta: string) => void) => subscribe<string>('chat:delta', cb)
 export const onChatUsage = (cb: (u: Usage) => void) => subscribe<Usage>('chat:usage', cb)
 export const onChatDone = (cb: (d: { content: string }) => void) => subscribe<{ content: string }>('chat:done', cb)
 export const onChatError = (cb: (msg: string) => void) => subscribe<string>('chat:error', cb)
+export const onChatEmptyResponse = (cb: (text: string) => void) => subscribe<string>('chat:empty_response', cb)
 export const onNoteProposed = (cb: (p: { title: string; content: string; tags: string[] }) => void) => subscribe<{ title: string; content: string; tags: string[] }>('note:proposed', cb)
 export const onAlertProposed = (cb: (p: AlertProposal) => void) => subscribe<AlertProposal>('alert:proposed', cb)
 

@@ -1,7 +1,7 @@
 import type { Choice } from './interaction'
 
 // The view the shell can show. Mirrors the `View` union in App.tsx.
-export type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph' | 'alerts'
+export type View = 'chat' | 'settings' | 'history' | 'notes' | 'search' | 'graph' | 'alerts' | 'debug'
 
 // Outcomes of the note actions, mirrored structurally from the Go results
 // (bindings). Kept as local interfaces so commands stay decoupled from the
